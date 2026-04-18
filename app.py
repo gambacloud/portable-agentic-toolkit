@@ -23,7 +23,7 @@ log = get_logger(__name__)
 
 BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 APP_MODE = os.getenv("APP_MODE", "SINGLE").upper()
-API_PORT = int(os.getenv("API_PORT", "8001"))
+API_PORT = int(os.getenv("API_PORT", "8002"))
 PROJECT_ROOT = Path(__file__).parent
 MCP_SERVERS_DIR = PROJECT_ROOT / "bin" / "mcp_servers"
 
