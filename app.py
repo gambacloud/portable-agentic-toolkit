@@ -15,7 +15,9 @@ import uvicorn
 import db.queries as q
 from agents.crew import build_crew
 from api.server import api as rest_api
+from db.chainlit_data import SQLiteDataLayer
 from db.database import init_db
+from mcp_tools.installer import make_installer_tool
 from mcp_tools.registry import MCPRegistry
 from utils.logger import get_logger
 
@@ -37,6 +39,54 @@ def _run_api():
 
 threading.Thread(target=_run_api, daemon=True, name="api-server").start()
 log.info("REST API started — http://localhost:%d  (docs: http://localhost:%d/docs)", API_PORT, API_PORT)
+
+# ── Register Chainlit data layer (conversation history sidebar) ───────────────
+
+if SQLiteDataLayer is not None:
+    try:
+        import chainlit.data as cl_data
+        cl_data.data_layer = SQLiteDataLayer()
+        log.info("Chainlit data layer registered — history sidebar enabled")
+    except Exception as _e:
+        log.warning("Could not register data layer: %s", _e)
+
+# ── Write public assets and patch Chainlit config ────────────────────────────
+
+def _setup_ui_assets():
+    public_dir = PROJECT_ROOT / "public"
+    public_dir.mkdir(exist_ok=True)
+    (public_dir / "config.js").write_text(
+        f"window.__PAT_API_PORT__ = {API_PORT};\n", encoding="utf-8"
+    )
+
+    config_toml = PROJECT_ROOT / ".chainlit" / "config.toml"
+    if not config_toml.exists():
+        return  # Chainlit hasn't generated it yet; will patch on next run
+
+    import re
+    content = config_toml.read_text(encoding="utf-8")
+    original = content
+
+    for key, val in [
+        ("custom_css", '"/public/sidebar.css"'),
+        ("custom_js", '"/public/sidebar.js"'),
+    ]:
+        if re.search(rf'^{key}\s*=', content, re.MULTILINE):
+            continue  # already set (uncommented)
+        # Replace commented line if present, else append under [UI]
+        commented = re.sub(
+            rf'^#\s*{key}\s*=.*$', f'{key} = {val}', content, flags=re.MULTILINE
+        )
+        if commented != content:
+            content = commented
+        else:
+            content = re.sub(r'(\[UI\])', rf'\1\n{key} = {val}', content)
+
+    if content != original:
+        config_toml.write_text(content, encoding="utf-8")
+        log.info("Chainlit config patched with sidebar assets — restart to activate")
+
+_setup_ui_assets()
 
 
 # ── Header-based identity ────────────────────────────────────────────────────
@@ -263,6 +313,7 @@ async def _emit_step(name: str, content: str):
 
 def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None) -> str:
     tools = registry.get_crewai_tools(ask_user_fn) if registry else []
+    tools = tools + [make_installer_tool(ask_user_fn)]
     log.debug("Building crew — model=%s tools=%d profile=%s", model, len(tools), profile_id)
     crew = build_crew(model=model, tools=tools, on_step=on_step_fn, profile_id=profile_id)
     return crew.kickoff(inputs={"task": user_message})

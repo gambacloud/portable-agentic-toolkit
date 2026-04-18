@@ -1,0 +1,63 @@
+# Known MCP servers the agent can install automatically.
+# To add a custom server manually, drop a config.json into bin/mcp_servers/<name>/.
+
+servers:
+  brave_search:
+    package: "@modelcontextprotocol/server-brave-search"
+    description: "Web search via Brave Search API"
+    requires_confirmation: false
+    env_vars:
+      - key: BRAVE_API_KEY
+        description: "Brave Search API key — get one free at https://api.search.brave.com"
+        required: true
+
+  github:
+    package: "@modelcontextprotocol/server-github"
+    description: "Read GitHub repos, issues, PRs, and code"
+    requires_confirmation: true
+    env_vars:
+      - key: GITHUB_TOKEN
+        description: "GitHub personal access token (repo scope)"
+        required: true
+
+  filesystem:
+    package: "@modelcontextprotocol/server-filesystem"
+    description: "Read and write files on the local machine"
+    requires_confirmation: true
+    env_vars: []
+
+  gmail:
+    package: "@gongrzhe/server-gmail-autoauth-mcp"
+    description: "Read and send Gmail emails via Google OAuth"
+    requires_confirmation: true
+    env_vars:
+      - key: GMAIL_CREDENTIALS_PATH
+        description: "Path to your Google OAuth credentials JSON (from Google Cloud Console)"
+        required: true
+
+  slack:
+    package: "@modelcontextprotocol/server-slack"
+    description: "Post messages and read channels in Slack"
+    requires_confirmation: true
+    env_vars:
+      - key: SLACK_BOT_TOKEN
+        description: "Slack bot token (xoxb-...)"
+        required: true
+      - key: SLACK_TEAM_ID
+        description: "Slack workspace team ID"
+        required: true
+
+  postgres:
+    package: "@modelcontextprotocol/server-postgres"
+    description: "Query a PostgreSQL database"
+    requires_confirmation: true
+    env_vars:
+      - key: POSTGRES_URL
+        description: "PostgreSQL connection URL (postgresql://user:pass@host/db)"
+        required: true
+
+  sqlite:
+    package: "@modelcontextprotocol/server-sqlite"
+    description: "Query a local SQLite database"
+    requires_confirmation: true
+    env_vars: []

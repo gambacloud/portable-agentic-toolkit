@@ -71,6 +71,19 @@ def get_conversation(conv_id: str) -> dict | None:
     return data
 
 
+def update_conversation_title(conv_id: str, title: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE conversations SET title = ? WHERE id = ?", (title, conv_id)
+        )
+
+
+def delete_conversation(conv_id: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+    return cur.rowcount > 0
+
+
 def list_conversations(user_id: str, limit: int = 20) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
