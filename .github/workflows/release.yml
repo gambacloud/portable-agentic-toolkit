@@ -1,0 +1,76 @@
+name: Release
+
+# Triggered by pushing a version tag: git tag v1.0.0 && git push --tags
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    name: Build zip & publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create GitHub Releases
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so git log works for release notes
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Build clean release archive
+        run: |
+          FILENAME="portable-agentic-toolkit-${VERSION}.zip"
+          # git archive only includes tracked files — no .venv, no __pycache__
+          git archive \
+            --format=zip \
+            --prefix="portable-agentic-toolkit/" \
+            HEAD \
+            -o "$FILENAME"
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "Archive created: $FILENAME ($(du -sh $FILENAME | cut -f1))"
+
+      - name: Generate release notes from git log
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+            echo "Changes since $PREV_TAG:"
+          else
+            RANGE="HEAD"
+            echo "Initial release:"
+          fi
+          {
+            echo "## What's in this release"
+            echo ""
+            echo "Download \`portable-agentic-toolkit-${VERSION}.zip\`, extract, and run:"
+            echo '```'
+            echo "# Windows"
+            echo "bootstrap.bat"
+            echo ""
+            echo "# macOS / Linux"
+            echo "chmod +x bootstrap.sh && ./bootstrap.sh"
+            echo '```'
+            echo ""
+            echo "## Changes"
+            git log $RANGE --pretty=format:"- %s" --no-merges
+            echo ""
+            echo ""
+            echo "## Requirements"
+            echo "- [Ollama](https://ollama.com/download) installed"
+            echo "- 16 GB RAM, ~10 GB disk"
+            echo "- Windows 10+ / macOS 12+ / Linux"
+          } > release_notes.md
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$VERSION" \
+            "$FILENAME" \
+            --title "Portable Agentic Toolkit $VERSION" \
+            --notes-file release_notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

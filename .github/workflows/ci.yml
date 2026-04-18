@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  lint-and-check:
+    name: Lint & syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Check imports resolve
+        run: |
+          uv run python -c "
+          import agents.crew
+          import mcp_tools.registry
+          import utils.logger
+          import utils.ollama_utils
+          print('All imports OK')
+          "
