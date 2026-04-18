@@ -12,6 +12,7 @@ build/
 *.egg
 
 # Chainlit runtime files
+.chainlit/config.toml
 .chainlit/translations/
 .files/
 chainlit.db
