@@ -63,7 +63,7 @@ if not exist .env (
 )
 findstr /C:"CHAINLIT_AUTH_SECRET" .env >nul 2>&1
 if errorlevel 1 (
-    for /f "delims=" %%i in ('powershell -Command "[System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace(\"-\",\"\").ToLower()"') do set JWT=%%i
+    for /f "delims=" %%i in ('powershell -Command "[guid]::NewGuid().ToString(\"N\") + [guid]::NewGuid().ToString(\"N\")"') do set JWT=%%i
     echo CHAINLIT_AUTH_SECRET=!JWT!>> .env
     echo   JWT secret generated and saved to .env.
 )
