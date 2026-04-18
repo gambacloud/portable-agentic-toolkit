@@ -109,6 +109,20 @@ try:
         async def get_element(self, thread_id: str, element_id: str):
             return None
 
+        # ── Required stubs for newer Chainlit versions ────────────────────────
+
+        async def build_debug_url(self) -> str:
+            return ""
+
+        async def close(self):
+            pass
+
+        async def delete_feedback(self, feedback_id: str) -> bool:
+            return True
+
+        async def get_favorite_steps(self) -> list:
+            return []
+
 except Exception as _import_err:
     SQLiteDataLayer = None  # type: ignore
     log.warning("Chainlit data layer unavailable — history sidebar disabled: %s", _import_err)

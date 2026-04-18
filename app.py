@@ -4,9 +4,21 @@ Run with: uv run chainlit run app.py
 """
 import asyncio
 import os
+import secrets
 import threading
 import time
 from pathlib import Path
+
+# Auto-generate CHAINLIT_AUTH_SECRET if missing (needed for header_auth_callback)
+if not os.getenv("CHAINLIT_AUTH_SECRET"):
+    _secret = secrets.token_hex(32)
+    os.environ["CHAINLIT_AUTH_SECRET"] = _secret
+    _env_path = Path(__file__).parent / ".env"
+    if _env_path.exists():
+        _env_content = _env_path.read_text(encoding="utf-8")
+        if "CHAINLIT_AUTH_SECRET" not in _env_content:
+            with open(_env_path, "a", encoding="utf-8") as _f:
+                _f.write(f"\nCHAINLIT_AUTH_SECRET={_secret}\n")
 
 import chainlit as cl
 import ollama as ol
