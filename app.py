@@ -20,13 +20,14 @@ from utils.logger import get_logger
 log = get_logger(__name__)
 
 BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
+APP_MODE = os.getenv("APP_MODE", "SINGLE").upper()
 PROJECT_ROOT = Path(__file__).parent
 MCP_SERVERS_DIR = PROJECT_ROOT / "bin" / "mcp_servers"
 
 # ── Initialise DB and mount REST API on Chainlit's server ────────────────────
 
 init_db()
-log.info("%s starting — DB initialised", BOT_NAME)
+log.info("%s starting — DB initialised  mode=%s", BOT_NAME, APP_MODE)
 
 from chainlit.server import app as cl_server  # noqa: E402 — must come after cl import
 cl_server.mount("/api", rest_api)
@@ -38,8 +39,16 @@ log.info("REST API mounted at /api  (docs: /api/docs)")
 
 @cl.header_auth_callback
 def header_auth(headers: dict) -> cl.User | None:
-    user_id = headers.get("x-user-id") or headers.get("X-User-ID", "anonymous")
-    return cl.User(identifier=user_id)
+    if APP_MODE == "MULTI":
+        email = (headers.get("x-user-email") or headers.get("X-User-Email", "")).strip()
+        if email:
+            log.debug("MULTI auth — email=%s", email)
+            return cl.User(identifier=email, metadata={"is_guest": False})
+        log.debug("MULTI auth — no email header, guest session")
+        return cl.User(identifier="guest", metadata={"is_guest": True})
+    # SINGLE mode — fixed local identity, optional X-User-ID override
+    user_id = (headers.get("x-user-id") or headers.get("X-User-ID", "local")).strip()
+    return cl.User(identifier=user_id, metadata={"is_guest": False})
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -48,9 +57,21 @@ def header_auth(headers: dict) -> cl.User | None:
 @cl.on_chat_start
 async def on_start():
     cl_user = cl.user_session.get("user")
-    user_id = cl_user.identifier if cl_user else "anonymous"
-    q.upsert_user(user_id)
-    log.info("Session started — user=%s bot=%s", user_id, BOT_NAME)
+    is_guest = (cl_user.metadata or {}).get("is_guest", False) if cl_user else False
+    user_id = cl_user.identifier if cl_user else "guest"
+    cl.user_session.set("persist", not is_guest)
+    log.info("Session started — user=%s mode=%s guest=%s", user_id, APP_MODE, is_guest)
+
+    if is_guest:
+        await cl.Message(
+            content=(
+                "**Guest Mode** — History and save features are disabled.\n\n"
+                "Ask your administrator to pass an `X-User-Email` header to enable persistence."
+            ),
+            author="System",
+        ).send()
+    else:
+        q.upsert_user(user_id)
 
     model_names = _get_ollama_models()
     if not model_names:
@@ -108,10 +129,12 @@ async def on_start():
     cl.user_session.set("verbose", settings.get("verbose", True))
     cl.user_session.set("user_id", user_id)
 
-    # Create a conversation record for this session
-    conv_id = q.create_conversation(user_id, selected_model)
+    # Create a conversation record (skipped in guest mode)
+    conv_id = None
+    if not is_guest:
+        conv_id = q.create_conversation(user_id, selected_model)
+        log.info("Conversation created — id=%s model=%s", conv_id, selected_model)
     cl.user_session.set("conv_id", conv_id)
-    log.info("Conversation created — id=%s model=%s", conv_id, selected_model)
 
     tool_count = registry.tool_count()
     tool_msg = (
@@ -146,16 +169,17 @@ async def on_settings_update(settings: dict):
 async def on_message(message: cl.Message):
     model: str = cl.user_session.get("model") or "llama3.2"
     verbose: bool = cl.user_session.get("verbose", True)
+    persist: bool = cl.user_session.get("persist", True)
     profile_id: str | None = cl.user_session.get("profile_id")
     registry: MCPRegistry = cl.user_session.get("registry")
-    user_id: str = cl.user_session.get("user_id", "anonymous")
+    user_id: str = cl.user_session.get("user_id", "local")
     conv_id: str = cl.user_session.get("conv_id")
 
     log.info("Message received — user=%s model=%s len=%d", user_id, model, len(message.content))
     log.debug("Message content: %s", message.content[:200])
 
     # Persist user message
-    if conv_id:
+    if persist and conv_id:
         q.append_message(conv_id, "user", message.content)
 
     loop = asyncio.get_event_loop()
@@ -190,7 +214,7 @@ async def on_message(message: cl.Message):
         log.info("Crew finished in %.2fs", elapsed)
 
         # Persist assistant response
-        if conv_id:
+        if persist and conv_id:
             q.append_message(conv_id, "assistant", str(result))
 
         response_msg.content = str(result)
