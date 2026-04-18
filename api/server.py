@@ -5,8 +5,10 @@ Identity: pass X-User-ID header on every request.
 Docs:     http://localhost:8000/api/docs
 """
 import os
+from pathlib import Path
 
 import db.queries as q
+from db.database import DB_PATH
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
@@ -62,7 +64,45 @@ def current_user(x_user_id: str = Header(default="anonymous")) -> str:
 
 @api.get("/health", tags=["meta"])
 def health():
-    return {"status": "ok", "bot": BOT_NAME}
+    from db.database import get_conn
+
+    db_size_mb = round(DB_PATH.stat().st_size / 1_048_576, 2) if DB_PATH.exists() else 0
+
+    with get_conn() as conn:
+        users      = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        convs      = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        messages   = conn.execute("SELECT SUM(json_array_length(messages)) FROM conversations").fetchone()[0] or 0
+        profiles   = conn.execute("SELECT COUNT(*) FROM system_profiles").fetchone()[0]
+
+    try:
+        import ollama as ol
+        models = [m.model for m in (ol.list().models or [])]
+        ollama_status = "ok"
+    except Exception:
+        models = []
+        ollama_status = "unreachable"
+
+    mcp_dir = Path(__file__).parent.parent / "bin" / "mcp_servers"
+    mcp_servers = [d.name for d in mcp_dir.iterdir() if d.is_dir()] if mcp_dir.exists() else []
+
+    return {
+        "status": "ok",
+        "bot": BOT_NAME,
+        "app_mode": os.getenv("APP_MODE", "SINGLE"),
+        "db": {
+            "path": str(DB_PATH),
+            "size_mb": db_size_mb,
+            "users": users,
+            "conversations": convs,
+            "messages": messages,
+            "profiles": profiles,
+        },
+        "ollama": {
+            "status": ollama_status,
+            "models": models,
+        },
+        "mcp_servers": mcp_servers,
+    }
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
