@@ -72,6 +72,13 @@ async def on_start():
     cl.user_session.set("registry", registry)
     log.info("MCP discovery complete — %d tool(s) loaded", registry.tool_count())
 
+    profiles = q.list_profiles()
+    profile_names = ["(none)"] + [p["name"] for p in profiles]
+    profile_id_map: dict[str, str | None] = {"(none)": None}
+    profile_id_map.update({p["name"]: p["id"] for p in profiles})
+    cl.user_session.set("profile_id_map", profile_id_map)
+    log.info("Profiles loaded — %d available", len(profiles))
+
     settings = await cl.ChatSettings(
         [
             cl.input_widget.Select(
@@ -79,6 +86,12 @@ async def on_start():
                 label="LLM Model",
                 values=model_names,
                 initial_value=model_names[0],
+            ),
+            cl.input_widget.Select(
+                id="profile",
+                label="Expert Profile (Level 2)",
+                values=profile_names,
+                initial_value=profile_names[0],
             ),
             cl.input_widget.Switch(
                 id="verbose",
@@ -89,7 +102,9 @@ async def on_start():
     ).send()
 
     selected_model = settings.get("model", model_names[0])
+    selected_profile_name = settings.get("profile", "(none)")
     cl.user_session.set("model", selected_model)
+    cl.user_session.set("profile_id", profile_id_map.get(selected_profile_name))
     cl.user_session.set("verbose", settings.get("verbose", True))
     cl.user_session.set("user_id", user_id)
 
@@ -112,9 +127,16 @@ async def on_start():
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
     new_model = settings.get("model")
+    profile_name = settings.get("profile", "(none)")
+    profile_id_map = cl.user_session.get("profile_id_map", {})
+    profile_id = profile_id_map.get(profile_name)
     cl.user_session.set("model", new_model)
+    cl.user_session.set("profile_id", profile_id)
     cl.user_session.set("verbose", settings.get("verbose", True))
-    log.info("Settings updated — model=%s verbose=%s", new_model, settings.get("verbose"))
+    log.info(
+        "Settings updated — model=%s profile=%s verbose=%s",
+        new_model, profile_name, settings.get("verbose"),
+    )
 
 
 # ── Message handler ──────────────────────────────────────────────────────────
@@ -124,6 +146,7 @@ async def on_settings_update(settings: dict):
 async def on_message(message: cl.Message):
     model: str = cl.user_session.get("model") or "llama3.2"
     verbose: bool = cl.user_session.get("verbose", True)
+    profile_id: str | None = cl.user_session.get("profile_id")
     registry: MCPRegistry = cl.user_session.get("registry")
     user_id: str = cl.user_session.get("user_id", "anonymous")
     conv_id: str = cl.user_session.get("conv_id")
@@ -161,7 +184,7 @@ async def on_message(message: cl.Message):
     t_start = time.perf_counter()
     try:
         result = await asyncio.to_thread(
-            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step
+            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id
         )
         elapsed = time.perf_counter() - t_start
         log.info("Crew finished in %.2fs", elapsed)
@@ -202,8 +225,8 @@ async def _emit_step(name: str, content: str):
         step.output = content
 
 
-def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn) -> str:
+def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None) -> str:
     tools = registry.get_crewai_tools(ask_user_fn) if registry else []
-    log.debug("Building crew — model=%s tools=%d", model, len(tools))
-    crew = build_crew(model=model, tools=tools, on_step=on_step_fn)
+    log.debug("Building crew — model=%s tools=%d profile=%s", model, len(tools), profile_id)
+    crew = build_crew(model=model, tools=tools, on_step=on_step_fn, profile_id=profile_id)
     return crew.kickoff(inputs={"task": user_message})

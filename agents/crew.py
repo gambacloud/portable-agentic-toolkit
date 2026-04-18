@@ -26,8 +26,9 @@ def build_crew(
     model: str,
     tools: list,
     on_step: Optional[Callable[[str, str], None]] = None,
+    profile_id: Optional[str] = None,
 ) -> "_DeferredCrew":
-    log.info("Building crew — model=%s tools=%d", model, len(tools))
+    log.info("Building crew — model=%s tools=%d profile=%s", model, len(tools), profile_id)
 
     llm = LLM(
         model=f"ollama/{model}",
@@ -35,8 +36,13 @@ def build_crew(
         temperature=0.1,
     )
 
-    cfg = _agent_config()
+    company_dna = _load_company_dna()
+    cfg = _agent_config(profile_id=profile_id)
     log.debug("Agent role: %s", cfg["role"])
+
+    backstory = cfg["backstory"]
+    if company_dna:
+        backstory = f"{company_dna}\n\n{backstory}"
 
     def step_callback(agent_output):
         if hasattr(agent_output, "tool") and agent_output.tool:
@@ -52,7 +58,7 @@ def build_crew(
     agent = Agent(
         role=cfg["role"],
         goal=cfg["goal"],
-        backstory=cfg["backstory"],
+        backstory=backstory,
         llm=llm,
         tools=tools,
         verbose=True,
@@ -104,7 +110,22 @@ class _DeferredCrew:
             raise
 
 
-def _agent_config() -> dict:
+def _load_company_dna() -> str:
+    if not CONFIG_PATH.exists():
+        return ""
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        dna = data.get("company_dna", "").strip()
+        if dna:
+            log.debug("Company DNA loaded (%d chars)", len(dna))
+        return dna
+    except Exception as exc:
+        log.warning("Failed to load company_dna: %s", exc)
+        return ""
+
+
+def _agent_config(profile_id: Optional[str] = None) -> dict:
     defaults = {
         "role": "General Purpose AI Assistant",
         "goal": (
@@ -119,7 +140,22 @@ def _agent_config() -> dict:
         ),
     }
 
-    # Priority 1: default system_profile from DB
+    # Priority 1: explicitly selected profile
+    if profile_id:
+        try:
+            from db.queries import get_profile
+            profile = get_profile(profile_id)
+            if profile:
+                log.debug("Using selected profile: %s", profile.get("name"))
+                return {
+                    "role": profile.get("role") or defaults["role"],
+                    "goal": profile.get("goal") or defaults["goal"],
+                    "backstory": profile.get("backstory") or defaults["backstory"],
+                }
+        except Exception as exc:
+            log.debug("Selected profile lookup failed: %s", exc)
+
+    # Priority 2: default system_profile from DB
     try:
         from db.queries import get_default_profile
         profile = get_default_profile()
