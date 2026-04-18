@@ -313,7 +313,7 @@ def _get_ollama_models() -> list[str]:
 
 
 async def _ask_user_async(prompt: str, choices: list[str]) -> str:
-    actions = [cl.Action(name=c, label=c, value=c) for c in choices]
+    actions = [cl.Action(name=c, label=c, value=c, payload={"value": c}) for c in choices]
     response = await cl.AskActionMessage(content=prompt, actions=actions, timeout=120).send()
     return response.get("value", choices[-1]) if response else choices[-1]
 

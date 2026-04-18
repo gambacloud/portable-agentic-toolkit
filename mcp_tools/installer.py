@@ -27,6 +27,7 @@ def make_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> BaseToo
             "Use this when the user asks you to do something you have no tool for. "
             f"Input: server name as a plain string. Known servers: {available}."
         )
+        cache_function = lambda self, *args, **kwargs: False  # noqa: E731
 
         def _run(self, server_name: str) -> str:
             return _install(server_name.strip().lower(), catalog, ask_user_fn)
