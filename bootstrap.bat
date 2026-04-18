@@ -61,7 +61,7 @@ if not exist .env (
         type nul > .env
     )
 )
-findstr /C:"CHAINLIT_AUTH_SECRET=" .env >nul 2>&1
+findstr /R /C:"^CHAINLIT_AUTH_SECRET=" .env >nul 2>&1
 if errorlevel 1 (
     for /f "delims=" %%i in ('powershell -Command "[guid]::NewGuid().ToString(\"N\") + [guid]::NewGuid().ToString(\"N\")"') do set JWT=%%i
     echo CHAINLIT_AUTH_SECRET=!JWT!>> .env
