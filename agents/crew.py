@@ -5,6 +5,7 @@ config/agents.yaml, so you can tune behaviour without touching code.
 """
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -87,8 +88,24 @@ def build_hierarchical_crew(
     cfg = _agent_config(profile_id=profile_id)
 
     def step_callback(agent_output):
-        if hasattr(agent_output, "tool") and agent_output.tool and on_step:
-            on_step(f"Tool: {agent_output.tool}", str(getattr(agent_output, "tool_input", "")))
+        if not (hasattr(agent_output, "tool") and agent_output.tool and on_step):
+            return
+        tool = agent_output.tool
+        raw = getattr(agent_output, "tool_input", "")
+        try:
+            inp = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            inp = {}
+        if tool == "delegate_work_to_coworker":
+            coworker = inp.get("coworker", "?")
+            task = (inp.get("task", "") or str(raw))[:80]
+            on_step("🤝 Delegating", f"→ **{coworker}**: {task}")
+        elif tool == "ask_question_to_coworker":
+            coworker = inp.get("coworker", "?")
+            question = (inp.get("question", "") or str(raw))[:80]
+            on_step("❓ Asking", f"→ **{coworker}**: {question}")
+        else:
+            on_step(f"🔧 {tool}", str(raw)[:120])
 
     def _make_agent(role: str, goal: str, backstory: str, agent_tools: list) -> Agent:
         full_backstory = f"{company_dna}\n\n{backstory}" if company_dna else backstory
