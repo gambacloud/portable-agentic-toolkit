@@ -10,6 +10,7 @@ from pathlib import Path
 import db.queries as q
 from db.database import DB_PATH
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
@@ -248,3 +249,64 @@ def run_schedule_now(sid: str):
         name=f"schedule-{sid[:8]}",
     ).start()
     return {"ok": True, "message": "Task started in background"}
+
+
+# ── MCP Management ────────────────────────────────────────────────────────────
+
+
+class MCPUpdate(BaseModel):
+    enabled: bool
+
+
+class MCPInstall(BaseModel):
+    name: str
+
+
+@api.get("/mcps", tags=["mcps"])
+def list_mcps():
+    mcp_dir = Path(__file__).parent.parent / "bin" / "mcp_servers"
+    if not mcp_dir.exists():
+        return []
+    results = []
+    for d in mcp_dir.iterdir():
+        if d.is_dir():
+            config_path = d / "config.json"
+            if config_path.exists():
+                import json
+                try:
+                    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+                    results.append({"name": d.name, "enabled": cfg.get("enabled", True), "config": cfg})
+                except Exception:
+                    pass
+    return results
+
+
+@api.patch("/mcps/{name}", tags=["mcps"])
+def update_mcp(name: str, body: MCPUpdate):
+    mcp_dir = Path(__file__).parent.parent / "bin" / "mcp_servers" / name
+    config_path = mcp_dir / "config.json"
+    if not config_path.exists():
+        raise HTTPException(404, "MCP server not found")
+    import json
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    cfg["enabled"] = body.enabled
+    config_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
+
+
+@api.post("/mcps", tags=["mcps"])
+def install_mcp(body: MCPInstall):
+    from mcp_tools.installer import _install, _load_catalog
+    catalog = _load_catalog()
+    def fake_ask(prompt, choices):
+        return choices[0] # Auto-approve for UI
+    result = _install(body.name.strip().lower(), catalog, fake_ask)
+    return {"result": result}
+
+
+@api.get("/mcp-ui", response_class=HTMLResponse, tags=["ui"])
+def mcp_ui():
+    html_path = Path(__file__).parent.parent / "public" / "mcp_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"

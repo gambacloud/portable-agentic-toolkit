@@ -7,6 +7,7 @@ so app.py needs minimal changes.
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Callable, Optional
 
@@ -141,7 +142,17 @@ class _OllamaAgent:
 
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
-                fn_args = tc.function.arguments or {}
+                raw_args = tc.function.arguments or {}
+                
+                parsed = _parse_tool_args(raw_args)
+                if isinstance(parsed, str):
+                    log.warning("Tool call JSON parse failed for %s", fn_name)
+                    if self.on_step:
+                        self.on_step(f"⚠️ {fn_name}", "JSON format error — asking model to retry")
+                    messages.append({"role": "tool", "content": parsed})
+                    continue
+
+                fn_args = parsed
                 log.debug("Tool call — %s(%s)", fn_name, str(fn_args)[:80])
                 if self.on_step:
                     self.on_step(f"🔧 {fn_name}", str(fn_args)[:120])
@@ -206,7 +217,16 @@ class _OllamaAgent:
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
                 raw_args = tc.function.arguments or "{}"
-                fn_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                
+                parsed = _parse_tool_args(raw_args)
+                if isinstance(parsed, str):
+                    log.warning("Tool call JSON parse failed for %s", fn_name)
+                    if self.on_step:
+                        self.on_step(f"⚠️ {fn_name}", "JSON format error — asking model to retry")
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": parsed})
+                    continue
+
+                fn_args = parsed
                 log.debug("Tool call — %s(%s)", fn_name, str(fn_args)[:80])
                 if self.on_step:
                     self.on_step(f"🔧 {fn_name}", str(fn_args)[:120])
@@ -277,28 +297,26 @@ class _Runner:
 
     def _run_team(self, task: str) -> str:
         on_step = self._on_step
-        context_parts: list[str] = []
+        import concurrent.futures
 
-        for agent in self._agents:
+        def _run_worker(agent) -> str:
             log.debug("Delegating to: %s", agent.role)
             if on_step:
                 on_step("🤝 Delegating", f"→ **{agent.role}**: {task[:80]}")
 
-            # Each worker sees the task + all previous results
-            if context_parts:
-                prompt = (
-                    f"Previous team work:\n"
-                    + "\n\n".join(context_parts)
-                    + f"\n\nYour task (as {agent.role}): {task}"
-                )
-            else:
-                prompt = task
-
+            prompt = task
             result = agent.run(prompt)
-            context_parts.append(f"**{agent.role}**:\n{result}")
 
             if on_step:
                 on_step(f"✅ {agent.role[:40]}", "done")
+                
+            return f"**{agent.role}**:\n{result}"
+
+        # Run workers concurrently
+        context_parts: list[str] = []
+        if self._agents:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(self._agents)) as executor:
+                context_parts = list(executor.map(_run_worker, self._agents))
 
         # Manager synthesizes all worker outputs
         from agents.crew import _agent_config, _load_company_dna
@@ -326,3 +344,34 @@ class _Runner:
             "Synthesize a final, clear, and complete answer."
         )
         return manager.run(synthesis_prompt)
+
+
+def _parse_tool_args(raw_args) -> dict | str:
+    if isinstance(raw_args, dict):
+        return raw_args
+    if not isinstance(raw_args, str):
+        return {}
+        
+    s = raw_args.strip()
+    if not s:
+        return {}
+        
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+        
+    # Attempt to strip markdown blocks if model hallucinated them
+    m = re.search(r"```(?:json)?\s*(.*?)\s*```", s, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+            
+    # Generic cleanup (e.g., trailing commas before braces)
+    s_clean = re.sub(r",(\s*[}\]])", r"\1", s)
+    try:
+        return json.loads(s_clean)
+    except json.JSONDecodeError as exc:
+        return f"Invalid JSON arguments provided: {exc}. Please fix your JSON formatting and try again."

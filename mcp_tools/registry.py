@@ -4,9 +4,9 @@ and wraps their tools as CrewAI BaseTool instances.
 
 Discovery flow:
   1. Scan bin/mcp_servers/*/config.json at startup (async).
-  2. Connect to each server via stdio, call list_tools(), cache results.
+  2. Connect to each server via stdio, call list_tools(), cache results, KEEP ALIVE.
   3. On crew build, wrap each tool as a CrewAI BaseTool.
-  4. On tool execution (sync, inside a thread), call the server via asyncio.run().
+  4. On tool execution (sync, inside a thread), dispatch to main loop via run_coroutine_threadsafe.
   5. If requires_confirmation=true, gate execution behind HITL ask_user_fn.
 """
 from __future__ import annotations
@@ -14,11 +14,15 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Callable, Optional
 
 from crewai.tools import BaseTool
 from pydantic import Field
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from utils.logger import get_logger
 
@@ -32,8 +36,17 @@ class MCPRegistry:
     def __init__(self, servers_dir: Path):
         self.servers_dir = servers_dir
         self._servers: dict[str, dict] = {}
+        self._sessions: dict[str, ClientSession] = {}
+        self._stack = AsyncExitStack()
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
 
     async def discover(self):
+        if not self._loop:
+            self._loop = asyncio.get_running_loop()
+
         if not self.servers_dir.exists():
             log.debug("MCP servers dir not found: %s", self.servers_dir)
             return
@@ -55,7 +68,7 @@ class MCPRegistry:
 
             t_start = time.perf_counter()
             try:
-                tools = await _list_tools(config)
+                tools = await self._connect_and_list_tools(server_name, config)
                 elapsed = time.perf_counter() - t_start
                 self._servers[server_name] = {"config": config, "tools": tools}
                 log.info(
@@ -71,6 +84,54 @@ class MCPRegistry:
                     server_name, elapsed, exc, exc_info=True,
                 )
 
+    async def _connect_and_list_tools(self, server_name: str, config: dict) -> list[dict]:
+        params = StdioServerParameters(
+            command=config["command"],
+            args=config.get("args", []),
+            env=config.get("env") or None,
+        )
+        read, write = await self._stack.enter_async_context(stdio_client(params))
+        session = await self._stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        
+        self._sessions[server_name] = session
+        
+        result = await session.list_tools()
+        return [
+            {
+                "name": t.name,
+                "description": t.description or "",
+                "input_schema": t.inputSchema or {},
+            }
+            for t in result.tools
+        ]
+
+    async def close(self):
+        log.info("Closing MCP Registry and killing server processes")
+        await self._stack.aclose()
+        self._sessions.clear()
+
+    def call_tool_sync(self, server_name: str, tool_name: str, args: dict) -> str:
+        """Call an MCP tool synchronously by dispatching it to the main event loop."""
+        session = self._sessions.get(server_name)
+        if not session:
+            return f"Error: MCP server '{server_name}' is not connected."
+
+        async def _do_call():
+            result = await session.call_tool(tool_name, args)
+            if result.content:
+                return "\n".join(getattr(c, "text", str(c)) for c in result.content)
+            return "(Tool completed — no text output)"
+
+        if not self._loop:
+            return "Error: No event loop available for MCP tool call."
+
+        future = asyncio.run_coroutine_threadsafe(_do_call(), self._loop)
+        try:
+            return future.result(timeout=120)
+        except Exception as exc:
+            return f"Tool execution failed: {exc}"
+
     def tool_count(self) -> int:
         return sum(len(s["tools"]) for s in self._servers.values())
 
@@ -82,9 +143,9 @@ class MCPRegistry:
             for tool_def in server_data["tools"]:
                 tools.append(
                     _make_mcp_tool(
+                        self,
                         server_name=server_name,
                         tool_def=tool_def,
-                        server_config=config,
                         requires_confirmation=needs_confirm,
                         ask_user_fn=ask_user_fn,
                     )
@@ -96,7 +157,6 @@ class MCPRegistry:
         return list(self._servers.keys())
 
     def get_runner_tools(self, ask_user_fn: Optional[Callable] = None, only_servers: Optional[list] = None) -> tuple[list[dict], dict]:
-        """Return (tool_defs, tool_map) for the direct Ollama runner."""
         tool_defs: list[dict] = []
         tool_map: dict[str, Callable] = {}
 
@@ -121,7 +181,7 @@ class MCPRegistry:
                     },
                 })
                 tool_map[safe_name] = _make_runner_callable(
-                    config, t["name"], needs_confirm, ask_user_fn,
+                    self, server_name, t["name"], needs_confirm, ask_user_fn,
                     get_logger(f"mcp.{server_name}.{t['name']}"),
                 )
 
@@ -142,9 +202,9 @@ class MCPRegistry:
 
 
 def _make_mcp_tool(
+    registry: MCPRegistry,
     server_name: str,
     tool_def: dict,
-    server_config: dict,
     requires_confirmation: bool,
     ask_user_fn: Optional[Callable],
 ) -> BaseTool:
@@ -153,7 +213,8 @@ def _make_mcp_tool(
         f"[MCP:{server_name}] {tool_def.get('description', tool_def['name'])}. "
         "Input: a JSON object with the tool arguments."
     )
-    _server_config = server_config
+    _registry = registry
+    _server_name = server_name
     _tool_name = tool_def["name"]
     _requires_confirm = requires_confirmation
     _ask_user = ask_user_fn
@@ -172,7 +233,7 @@ def _make_mcp_tool(
                 except json.JSONDecodeError as exc:
                     _log.warning("Could not parse tool input as JSON (%s) — using {}", exc)
 
-            _log.info("Tool call — server=%s tool=%s args=%s", server_name, _tool_name, args)
+            _log.info("Tool call — server=%s tool=%s args=%s", _server_name, _tool_name, args)
 
             if _requires_confirm and _ask_user:
                 preview = json.dumps(args, indent=2, ensure_ascii=False)
@@ -187,7 +248,7 @@ def _make_mcp_tool(
 
             t_start = time.perf_counter()
             try:
-                result = asyncio.run(_call_tool(_server_config, _tool_name, args))
+                result = _registry.call_tool_sync(_server_name, _tool_name, args)
                 elapsed = time.perf_counter() - t_start
                 _log.info(
                     "Tool '%s' completed in %.2fs — output_len=%d",
@@ -207,10 +268,7 @@ def _make_mcp_tool(
     return _MCPTool()
 
 
-# ── Async MCP helpers ────────────────────────────────────────────────────────
-
-
-def _make_runner_callable(config, tool_name, needs_confirm, ask_user_fn, logger):
+def _make_runner_callable(registry: MCPRegistry, server_name: str, tool_name: str, needs_confirm: bool, ask_user_fn: Optional[Callable], logger):
     def fn(**kwargs):
         if needs_confirm and ask_user_fn:
             import json as _json
@@ -223,50 +281,8 @@ def _make_runner_callable(config, tool_name, needs_confirm, ask_user_fn, logger)
                 logger.warning("Tool '%s' denied", tool_name)
                 return "Action denied by user."
         try:
-            return asyncio.run(_call_tool(config, tool_name, kwargs))
+            return registry.call_tool_sync(server_name, tool_name, kwargs)
         except Exception as exc:
             logger.error("Tool error: %s", exc)
             return f"Tool error: {exc}"
     return fn
-
-
-async def _list_tools(config: dict) -> list[dict]:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-
-    params = StdioServerParameters(
-        command=config["command"],
-        args=config.get("args", []),
-        env=config.get("env") or None,
-    )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            return [
-                {
-                    "name": t.name,
-                    "description": t.description or "",
-                    "input_schema": t.inputSchema or {},
-                }
-                for t in result.tools
-            ]
-
-
-async def _call_tool(config: dict, tool_name: str, args: dict) -> str:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-
-    params = StdioServerParameters(
-        command=config["command"],
-        args=config.get("args", []),
-        env=config.get("env") or None,
-    )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(tool_name, args)
-
-    if result.content:
-        return "\n".join(getattr(c, "text", str(c)) for c in result.content)
-    return "(Tool completed — no text output)"

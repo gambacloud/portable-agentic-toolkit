@@ -252,6 +252,45 @@ async def on_start():
     ).send()
 
 
+@cl.on_chat_resume
+async def on_chat_resume(thread):
+    """Restore a conversation when user visits a specific thread URL."""
+    headers = cl.user_session.get("headers")
+    user_id = "local-user"
+    is_guest = False
+    if headers and headers.get("x-user-email"):
+        user_id = headers.get("x-user-email")
+    elif APP_MODE == "production":
+        is_guest = True
+
+    cl.user_session.set("user_id", user_id)
+    cl.user_session.set("persist", not is_guest)
+
+    registry = MCPRegistry(MCP_SERVERS_DIR)
+    await registry.discover()
+    cl.user_session.set("registry", registry)
+
+    # Set conv_id to the thread ID so new messages append to this session
+    conv_id = thread["id"]
+    cl.user_session.set("conv_id", conv_id)
+    
+    metadata = thread.get("metadata", {})
+    cl.user_session.set("model", metadata.get("model") or "llama3.2")
+    cl.user_session.set("profile_id", None)
+    cl.user_session.set("verbose", True)
+    cl.user_session.set("multi_agent", False)
+    cl.user_session.set("active_mcps", registry.server_names())
+    
+    log.info("Conversation resumed — id=%s user=%s", conv_id, user_id)
+
+
+@cl.on_chat_end
+async def on_end():
+    registry: MCPRegistry | None = cl.user_session.get("registry")
+    if registry:
+        await registry.close()
+
+
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
     new_model = settings.get("model")

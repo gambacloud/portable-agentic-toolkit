@@ -96,22 +96,30 @@ def _run_task(task: str, model: str, active_mcps: Optional[list]) -> str:
     from agents.runner import build_crew
     from mcp_tools.registry import MCPRegistry
 
-    registry = MCPRegistry(_MCP_SERVERS_DIR)
-    asyncio.run(registry.discover())
+    async def _do_task():
+        registry = MCPRegistry(_MCP_SERVERS_DIR)
+        await registry.discover()
 
-    def _auto_allow(prompt: str, choices: list[str]) -> str:
-        log.info("Scheduled task auto-approved: %s", choices[0])
-        return choices[0]
+        def _auto_allow(prompt: str, choices: list[str]) -> str:
+            log.info("Scheduled task auto-approved: %s", choices[0])
+            return choices[0]
 
-    t_defs, t_map = registry.get_runner_tools(_auto_allow, only_servers=active_mcps)
+        t_defs, t_map = registry.get_runner_tools(_auto_allow, only_servers=active_mcps)
 
-    from mcp_tools.installer import make_runner_installer_tool
-    inst_def, inst_fn = make_runner_installer_tool(_auto_allow)
-    t_defs.append(inst_def)
-    t_map["install_mcp_server"] = inst_fn
+        from mcp_tools.installer import make_runner_installer_tool
+        inst_def, inst_fn = make_runner_installer_tool(_auto_allow)
+        t_defs.append(inst_def)
+        t_map["install_mcp_server"] = inst_fn
 
-    runner = build_crew(model=model, tool_defs=t_defs, tool_map=t_map)
-    return runner.kickoff(inputs={"task": task})
+        runner = build_crew(model=model, tool_defs=t_defs, tool_map=t_map)
+        
+        # Run synchronous kickoff in a thread to keep async loop responsive for tools
+        result = await asyncio.to_thread(runner.kickoff, {"task": task})
+        
+        await registry.close()
+        return result
+
+    return asyncio.run(_do_task())
 
 
 # Module-level singleton
