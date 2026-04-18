@@ -52,6 +52,22 @@ if errorlevel 1 (
     )
 )
 
+:: ── Step 2b: Ensure .env exists with a JWT secret ───────────────────────────
+if not exist .env (
+    if exist .env.example (
+        copy .env.example .env >nul
+        echo   Created .env from .env.example.
+    ) else (
+        type nul > .env
+    )
+)
+findstr /C:"CHAINLIT_AUTH_SECRET" .env >nul 2>&1
+if errorlevel 1 (
+    for /f "delims=" %%i in ('powershell -Command "[System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace(\"-\",\"\").ToLower()"') do set JWT=%%i
+    echo CHAINLIT_AUTH_SECRET=!JWT!>> .env
+    echo   JWT secret generated and saved to .env.
+)
+
 :: ── Step 3: Create venv and install dependencies ─────────────────────────────
 echo [3/5] Installing Python dependencies (this may take a minute)...
 uv sync --no-dev
