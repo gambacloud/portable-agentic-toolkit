@@ -92,12 +92,17 @@ class MCPRegistry:
         log.debug("Returning %d CrewAI tool wrapper(s)", len(tools))
         return tools
 
-    def get_runner_tools(self, ask_user_fn: Optional[Callable] = None) -> tuple[list[dict], dict]:
+    def server_names(self) -> list[str]:
+        return list(self._servers.keys())
+
+    def get_runner_tools(self, ask_user_fn: Optional[Callable] = None, only_servers: Optional[list] = None) -> tuple[list[dict], dict]:
         """Return (tool_defs, tool_map) for the direct Ollama runner."""
         tool_defs: list[dict] = []
         tool_map: dict[str, Callable] = {}
 
         for server_name, server_data in self._servers.items():
+            if only_servers is not None and server_name not in only_servers:
+                continue
             config = server_data["config"]
             needs_confirm = config.get("requires_confirmation", False)
 

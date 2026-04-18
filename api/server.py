@@ -179,3 +179,72 @@ def update_profile(profile_id: str, body: ProfileUpdate):
 def delete_profile(profile_id: str):
     if not q.delete_profile(profile_id):
         raise HTTPException(404, "Profile not found")
+
+
+# ── Scheduled Tasks ───────────────────────────────────────────────────────────
+
+
+class ScheduleCreate(BaseModel):
+    name: str
+    task: str
+    cron: str
+    model: str = "groq/llama-3.3-70b-versatile"
+    active_mcps: list[str] = []
+
+
+class ScheduleUpdate(BaseModel):
+    name: str | None = None
+    task: str | None = None
+    cron: str | None = None
+    model: str | None = None
+    active_mcps: list[str] | None = None
+    enabled: bool | None = None
+
+
+@api.get("/schedules", tags=["schedules"])
+def list_schedules():
+    return q.list_schedules()
+
+
+@api.post("/schedules", status_code=201, tags=["schedules"])
+def create_schedule(body: ScheduleCreate):
+    from apscheduler.triggers.cron import CronTrigger
+    try:
+        CronTrigger.from_crontab(body.cron)
+    except Exception:
+        raise HTTPException(400, f"Invalid cron expression: '{body.cron}'")
+    schedule = q.create_schedule(body.name, body.task, body.cron, body.model, body.active_mcps)
+    from scheduler.engine import get_engine
+    get_engine().add_or_replace(schedule)
+    return schedule
+
+
+@api.patch("/schedules/{sid}", tags=["schedules"])
+def update_schedule(sid: str, body: ScheduleUpdate):
+    if not q.get_schedule(sid):
+        raise HTTPException(404, "Schedule not found")
+    updated = q.update_schedule(sid, **body.model_dump(exclude_none=True))
+    from scheduler.engine import get_engine
+    get_engine().add_or_replace(updated)
+    return updated
+
+
+@api.delete("/schedules/{sid}", status_code=204, tags=["schedules"])
+def delete_schedule(sid: str):
+    if not q.delete_schedule(sid):
+        raise HTTPException(404, "Schedule not found")
+    from scheduler.engine import get_engine
+    get_engine().remove(sid)
+
+
+@api.post("/schedules/{sid}/run", tags=["schedules"])
+def run_schedule_now(sid: str):
+    if not q.get_schedule(sid):
+        raise HTTPException(404, "Schedule not found")
+    import threading
+    threading.Thread(
+        target=lambda: __import__("scheduler.engine", fromlist=["get_engine"]).get_engine().run_now(sid),
+        daemon=True,
+        name=f"schedule-{sid[:8]}",
+    ).start()
+    return {"ok": True, "message": "Task started in background"}

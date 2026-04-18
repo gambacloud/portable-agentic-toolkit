@@ -1,0 +1,10 @@
+{
+  "name": "fetch",
+  "command": "uvx",
+  "args": [
+    "mcp-server-fetch"
+  ],
+  "env": {},
+  "requires_confirmation": false,
+  "enabled": true
+}

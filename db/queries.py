@@ -176,3 +176,72 @@ def delete_profile(profile_id: str) -> bool:
             "DELETE FROM system_profiles WHERE id = ?", (profile_id,)
         )
     return cur.rowcount > 0
+
+
+# ── Scheduled Tasks ───────────────────────────────────────────────────────────
+
+
+def create_schedule(name: str, task: str, cron: str, model: str, active_mcps: list) -> dict:
+    sid = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO scheduled_tasks (id, name, task, cron, model, active_mcps) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sid, name, task, cron, model, json.dumps(active_mcps)),
+        )
+    return get_schedule(sid)
+
+
+def list_schedules() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM scheduled_tasks ORDER BY created_at DESC"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["active_mcps"] = json.loads(d["active_mcps"])
+        result.append(d)
+    return result
+
+
+def get_schedule(sid: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE id = ?", (sid,)
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["active_mcps"] = json.loads(d["active_mcps"])
+    return d
+
+
+def update_schedule(sid: str, **kwargs) -> dict | None:
+    allowed = {"name", "task", "cron", "model", "active_mcps", "enabled"}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return get_schedule(sid)
+    if "active_mcps" in fields:
+        fields["active_mcps"] = json.dumps(fields["active_mcps"])
+    with get_conn() as conn:
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        conn.execute(
+            f"UPDATE scheduled_tasks SET {set_clause} WHERE id = ?",
+            [*fields.values(), sid],
+        )
+    return get_schedule(sid)
+
+
+def record_schedule_run(sid: str, result: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE scheduled_tasks SET last_run = datetime('now'), last_result = ? WHERE id = ?",
+            (result[:2000], sid),
+        )
+
+
+def delete_schedule(sid: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?", (sid,))
+    return cur.rowcount > 0

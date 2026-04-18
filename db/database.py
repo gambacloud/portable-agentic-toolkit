@@ -35,6 +35,19 @@ CREATE TABLE IF NOT EXISTS system_profiles (
     is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    task        TEXT NOT NULL,
+    cron        TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    active_mcps TEXT NOT NULL DEFAULT '[]',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    last_run    TEXT,
+    last_result TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 

@@ -2,6 +2,13 @@
 # To add a custom server manually, drop a config.json into bin/mcp_servers/<name>/.
 
 servers:
+  fetch:
+    package: "mcp-server-fetch"
+    command: "uvx"
+    description: "Fetch content from any URL — no API key needed"
+    requires_confirmation: false
+    env_vars: []
+
   brave_search:
     package: "@modelcontextprotocol/server-brave-search"
     description: "Web search via Brave Search API"

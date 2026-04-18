@@ -9,6 +9,13 @@ import threading
 import time
 from pathlib import Path
 
+# Load .env early so GROQ_API_KEY and others are available
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass
+
 # Auto-generate CHAINLIT_AUTH_SECRET if missing (needed for header_auth_callback)
 if not os.getenv("CHAINLIT_AUTH_SECRET"):
     _secret = secrets.token_hex(32)
@@ -51,6 +58,9 @@ def _run_api():
 
 threading.Thread(target=_run_api, daemon=True, name="api-server").start()
 log.info("REST API started — http://localhost:%d  (docs: http://localhost:%d/docs)", API_PORT, API_PORT)
+
+from scheduler.engine import get_engine as _get_scheduler
+_get_scheduler().start()
 
 # ── Register Chainlit data layer (conversation history sidebar) ───────────────
 
@@ -141,15 +151,15 @@ async def on_start():
     else:
         q.upsert_user(user_id)
 
-    model_names = _get_ollama_models()
+    model_names = _get_all_models()
     if not model_names:
-        log.warning("Ollama unreachable or no models installed")
+        log.warning("No models available — Ollama unreachable and no GROQ_API_KEY")
         await cl.Message(
             content=(
-                "**Ollama is not running or has no models.**\n\n"
-                "Start Ollama and pull a model:\n"
+                "**No models available.**\n\n"
+                "Either start Ollama and pull a model:\n"
                 "```\nollama pull llama3.2\n```\n"
-                "Then refresh this page."
+                "Or add `GROQ_API_KEY=...` to your `.env` file, then refresh."
             )
         ).send()
         model_names = ["llama3.2"]
@@ -168,32 +178,41 @@ async def on_start():
     cl.user_session.set("profile_id_map", profile_id_map)
     log.info("Profiles loaded — %d available", len(profiles))
 
-    settings = await cl.ChatSettings(
-        [
-            cl.input_widget.Select(
-                id="model",
-                label="LLM Model",
-                values=model_names,
-                initial_value=model_names[0],
-            ),
-            cl.input_widget.Select(
-                id="profile",
-                label="Expert Profile (Level 2)",
-                values=profile_names,
-                initial_value=profile_names[0],
-            ),
-            cl.input_widget.Switch(
-                id="verbose",
-                label="Show agent thinking",
-                initial=True,
-            ),
-            cl.input_widget.Switch(
-                id="multi_agent",
-                label="Multi-agent mode (needs a capable model)",
-                initial=False,
-            ),
-        ]
-    ).send()
+    server_names = registry.server_names()
+    widgets = [
+        cl.input_widget.Select(
+            id="model",
+            label="LLM Model",
+            values=model_names,
+            initial_value=model_names[0],
+        ),
+        cl.input_widget.Select(
+            id="profile",
+            label="Expert Profile (Level 2)",
+            values=profile_names,
+            initial_value=profile_names[0],
+        ),
+        cl.input_widget.Switch(
+            id="verbose",
+            label="Show agent thinking",
+            initial=True,
+        ),
+        cl.input_widget.Switch(
+            id="multi_agent",
+            label="Multi-agent mode (needs a capable model)",
+            initial=False,
+        ),
+    ]
+    if server_names:
+        widgets.append(
+            cl.input_widget.Tags(
+                id="active_mcps",
+                label="Active MCP Servers",
+                values=server_names,
+                initial_value=server_names,
+            )
+        )
+    settings = await cl.ChatSettings(widgets).send()
 
     selected_model = settings.get("model", model_names[0])
     selected_profile_name = settings.get("profile", "(none)")
@@ -201,6 +220,7 @@ async def on_start():
     cl.user_session.set("profile_id", profile_id_map.get(selected_profile_name))
     cl.user_session.set("verbose", settings.get("verbose", True))
     cl.user_session.set("multi_agent", settings.get("multi_agent", False))
+    cl.user_session.set("active_mcps", settings.get("active_mcps", server_names))
     cl.user_session.set("user_id", user_id)
 
     # Create a conversation record (skipped in guest mode)
@@ -242,9 +262,12 @@ async def on_settings_update(settings: dict):
     cl.user_session.set("profile_id", profile_id)
     cl.user_session.set("verbose", settings.get("verbose", True))
     cl.user_session.set("multi_agent", settings.get("multi_agent", False))
+    active_mcps = settings.get("active_mcps")
+    if active_mcps is not None:
+        cl.user_session.set("active_mcps", active_mcps)
     log.info(
-        "Settings updated — model=%s profile=%s verbose=%s",
-        new_model, profile_name, settings.get("verbose"),
+        "Settings updated — model=%s profile=%s verbose=%s mcps=%s",
+        new_model, profile_name, settings.get("verbose"), active_mcps,
     )
 
 
@@ -258,6 +281,7 @@ async def on_message(message: cl.Message):
     persist: bool = cl.user_session.get("persist", True)
     profile_id: str | None = cl.user_session.get("profile_id")
     registry: MCPRegistry = cl.user_session.get("registry")
+    active_mcps: list | None = cl.user_session.get("active_mcps")
     user_id: str = cl.user_session.get("user_id", "local")
     conv_id: str = cl.user_session.get("conv_id")
 
@@ -298,25 +322,42 @@ async def on_message(message: cl.Message):
     try:
         multi_agent: bool = cl.user_session.get("multi_agent", False)
         result = await asyncio.to_thread(
-            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent
+            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent, active_mcps
         )
         elapsed = time.perf_counter() - t_start
-        log.info("Crew finished in %.2fs", elapsed)
+        log.info("Crew finished in %.2fs — result_len=%d", elapsed, len(str(result)))
+        log.debug("Result content: %s", str(result)[:300])
 
         # Persist assistant response
         if persist and conv_id:
             q.append_message(conv_id, "assistant", str(result))
 
-        response_msg.content = str(result)
-        await response_msg.update()
+        content = str(result)
+        try:
+            response_msg.content = content
+            await response_msg.update()
+        except Exception as update_exc:
+            log.warning("response_msg.update() failed (%s) — sending new message", update_exc)
+            await cl.Message(content=content).send()
     except Exception as exc:
         elapsed = time.perf_counter() - t_start
         log.error("Crew failed after %.2fs — %s", elapsed, exc, exc_info=True)
-        response_msg.content = f"**Error:** {exc}"
-        await response_msg.update()
+        content = f"**Error:** {exc}"
+        try:
+            response_msg.content = content
+            await response_msg.update()
+        except Exception:
+            await cl.Message(content=content).send()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+_GROQ_MODELS = [
+    "groq/llama-3.3-70b-versatile",
+    "groq/llama3-groq-70b-8192-tool-use-preview",
+    "groq/llama-3.1-8b-instant",
+]
 
 
 def _get_ollama_models() -> list[str]:
@@ -326,6 +367,12 @@ def _get_ollama_models() -> list[str]:
     except Exception as exc:
         log.debug("Ollama list() failed: %s", exc)
         return []
+
+
+def _get_all_models() -> list[str]:
+    groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
+    ollama = _get_ollama_models()
+    return groq + ollama
 
 
 async def _ask_user_async(prompt: str, choices: list[str]) -> str:
@@ -347,12 +394,12 @@ async def _emit_step(name: str, content: str):
         step.output = content
 
 
-def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False) -> str:
+def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False, active_mcps=None) -> str:
     tool_defs: list = []
     tool_map: dict = {}
 
     if registry:
-        t_defs, t_map = registry.get_runner_tools(ask_user_fn)
+        t_defs, t_map = registry.get_runner_tools(ask_user_fn, only_servers=active_mcps or None)
         tool_defs += t_defs
         tool_map.update(t_map)
 

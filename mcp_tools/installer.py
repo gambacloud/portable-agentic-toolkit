@@ -114,10 +114,12 @@ def _install(server_name: str, catalog: dict, ask_user_fn: Callable) -> str:
             instructions.append(f"  • **{var['key']}** — {var['description']}")
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    command = entry.get("command", "npx")
+    args = [entry["package"]] if command != "npx" else ["-y", entry["package"]]
     config = {
         "name": server_name,
-        "command": "npx",
-        "args": ["-y", entry["package"]],
+        "command": command,
+        "args": args,
         "env": env_section,
         "requires_confirmation": entry.get("requires_confirmation", True),
         "enabled": True,

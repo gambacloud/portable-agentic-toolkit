@@ -6,6 +6,7 @@ so app.py needs minimal changes.
 """
 from __future__ import annotations
 
+import json
 import time
 from typing import Callable, Optional
 
@@ -111,12 +112,17 @@ class _OllamaAgent:
         )
 
     def run(self, task: str) -> str:
+        if self.model.startswith("groq/"):
+            return self._run_litellm(task)
+        return self._run_ollama(task)
+
+    def _run_ollama(self, task: str) -> str:
         messages: list = [
             {"role": "system", "content": self._system},
             {"role": "user", "content": task},
         ]
 
-        for iteration in range(self.max_iter):
+        for _ in range(self.max_iter):
             try:
                 resp = ollama.chat(
                     model=self.model,
@@ -137,31 +143,93 @@ class _OllamaAgent:
                 fn_name = tc.function.name
                 fn_args = tc.function.arguments or {}
                 log.debug("Tool call — %s(%s)", fn_name, str(fn_args)[:80])
-
                 if self.on_step:
                     self.on_step(f"🔧 {fn_name}", str(fn_args)[:120])
-
-                if fn_name in self.tool_map:
-                    try:
-                        result = self.tool_map[fn_name](**fn_args)
-                    except Exception as exc:
-                        result = f"Tool error: {exc}"
-                        log.warning("Tool '%s' raised: %s", fn_name, exc)
-                else:
-                    result = f"Unknown tool: {fn_name}"
-                    log.warning("Unknown tool requested: %s", fn_name)
-
-                log.debug("Tool result: %s", str(result)[:200])
+                result = self._call_tool(fn_name, fn_args)
                 messages.append({"role": "tool", "content": str(result)})
 
-        # Max iterations reached — ask for final answer
-        log.warning("Max iterations reached for agent '%s' — requesting final answer", self.role)
-        messages.append({"role": "user", "content": "Please provide your final answer now based on what you have so far."})
+        log.warning("Max iterations reached — requesting final answer")
+        messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = ollama.chat(model=self.model, messages=messages)
             return resp.message.content or "Unable to complete task within iteration limit."
         except Exception as exc:
             return f"Error: {exc}"
+
+    def _litellm_chat(self, messages: list, tools: list | None):
+        import litellm
+        for attempt in range(4):
+            try:
+                return litellm.completion(
+                    model=self.model,
+                    messages=messages,
+                    tools=tools or None,
+                )
+            except Exception as exc:
+                err = str(exc).lower()
+                if "rate_limit" in err or "rate limit" in err or "429" in err:
+                    wait = 15 * (attempt + 1)
+                    log.warning("Rate limit — waiting %ds (attempt %d)", wait, attempt + 1)
+                    if self.on_step:
+                        self.on_step("⏳ Rate limit", f"waiting {wait}s…")
+                    time.sleep(wait)
+                else:
+                    raise
+        raise RuntimeError("Rate limit persists after retries — try again in a minute.")
+
+    def _run_litellm(self, task: str) -> str:
+        messages: list = [
+            {"role": "system", "content": self._system},
+            {"role": "user", "content": task},
+        ]
+
+        for _ in range(self.max_iter):
+            try:
+                resp = self._litellm_chat(messages, self.tool_defs)
+            except Exception as exc:
+                log.error("LiteLLM error: %s", exc)
+                return f"Error communicating with model: {exc}"
+
+            msg = resp.choices[0].message
+            assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
+            if msg.tool_calls:
+                assistant_entry["tool_calls"] = [
+                    {"id": tc.id, "type": "function",
+                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in msg.tool_calls
+                ]
+            messages.append(assistant_entry)
+
+            if not msg.tool_calls:
+                return msg.content or ""
+
+            for tc in msg.tool_calls:
+                fn_name = tc.function.name
+                raw_args = tc.function.arguments or "{}"
+                fn_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                log.debug("Tool call — %s(%s)", fn_name, str(fn_args)[:80])
+                if self.on_step:
+                    self.on_step(f"🔧 {fn_name}", str(fn_args)[:120])
+                result = self._call_tool(fn_name, fn_args)
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": str(result)})
+
+        log.warning("Max iterations reached — requesting final answer")
+        messages.append({"role": "user", "content": "Please provide your final answer now."})
+        try:
+            resp = self._litellm_chat(messages, None)
+            return resp.choices[0].message.content or "Unable to complete."
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    def _call_tool(self, fn_name: str, fn_args: dict) -> str:
+        if fn_name in self.tool_map:
+            try:
+                return str(self.tool_map[fn_name](**fn_args))
+            except Exception as exc:
+                log.warning("Tool '%s' raised: %s", fn_name, exc)
+                return f"Tool error: {exc}"
+        log.warning("Unknown tool requested: %s", fn_name)
+        return f"Unknown tool: {fn_name}"
 
 
 # ── Runner (orchestrator) ──────────────────────────────────────────────────────
