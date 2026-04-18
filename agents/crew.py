@@ -35,6 +35,7 @@ def build_crew(
         model=f"ollama/{model}",
         base_url="http://localhost:11434",
         temperature=0.1,
+        max_tokens=4096,
     )
 
     company_dna = _load_company_dna()
@@ -82,6 +83,7 @@ def build_hierarchical_crew(
         model=f"ollama/{model}",
         base_url="http://localhost:11434",
         temperature=0.1,
+        max_tokens=4096,
     )
 
     company_dna = _load_company_dna()
