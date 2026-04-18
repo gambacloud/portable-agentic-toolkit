@@ -20,6 +20,11 @@ chainlit.db
 logs/*.log
 logs/*.log.*
 
+# Database
+*.db
+*.db-shm
+*.db-wal
+
 # Environment / secrets
 .env
 .env.*

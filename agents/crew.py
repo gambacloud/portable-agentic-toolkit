@@ -119,6 +119,22 @@ def _agent_config() -> dict:
         ),
     }
 
+    # Priority 1: default system_profile from DB
+    try:
+        from db.queries import get_default_profile
+        profile = get_default_profile()
+        if profile:
+            cfg = {
+                "role": profile.get("role") or defaults["role"],
+                "goal": profile.get("goal") or defaults["goal"],
+                "backstory": profile.get("backstory") or defaults["backstory"],
+            }
+            log.debug("Using system profile from DB: %s", profile.get("name"))
+            return cfg
+    except Exception as exc:
+        log.debug("DB profile lookup skipped: %s", exc)
+
+    # Priority 2: config/agents.yaml
     if not CONFIG_PATH.exists():
         log.debug("No agents.yaml found — using defaults")
         return defaults
