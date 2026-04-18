@@ -124,8 +124,16 @@ def my_conversations(limit: int = 20, user_id: str = Depends(current_user)):
 @api.post("/conversations", status_code=201, tags=["conversations"])
 def start_conversation(body: ConversationCreate, user_id: str = Depends(current_user)):
     q.upsert_user(user_id)
-    conv_id = q.create_conversation(user_id, body.model, body.title)
-    return {"id": conv_id}
+    conv_id, short_id = q.create_conversation(user_id, body.model, body.title)
+    return {"id": conv_id, "short_id": short_id}
+
+
+@api.get("/conversations/s/{short_id}", tags=["conversations"])
+def get_conversation_by_short(short_id: str):
+    conv = q.get_conversation_by_short_id(short_id)
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    return conv
 
 
 @api.get("/conversations/{conv_id}", tags=["conversations"])

@@ -3,7 +3,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from db.database import get_conn
+from db.database import get_conn, _gen_short_id
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -30,14 +30,27 @@ def get_user(user_id: str) -> dict | None:
 # ── Conversations ─────────────────────────────────────────────────────────────
 
 
-def create_conversation(user_id: str, model: str, title: str | None = None) -> str:
+def create_conversation(user_id: str, model: str, title: str | None = None) -> tuple[str, str]:
     conv_id = str(uuid.uuid4())
+    short_id = _gen_short_id()
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO conversations (id, user_id, model, title) VALUES (?, ?, ?, ?)",
-            (conv_id, user_id, model, title),
+            "INSERT INTO conversations (id, short_id, user_id, model, title) VALUES (?, ?, ?, ?, ?)",
+            (conv_id, short_id, user_id, model, title),
         )
-    return conv_id
+    return conv_id, short_id
+
+
+def get_conversation_by_short_id(short_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM conversations WHERE short_id = ?", (short_id,)
+        ).fetchone()
+    if not row:
+        return None
+    data = dict(row)
+    data["messages"] = json.loads(data["messages"])
+    return data
 
 
 def append_message(conv_id: str, role: str, content: str) -> None:
@@ -87,7 +100,7 @@ def delete_conversation(conv_id: str) -> bool:
 def list_conversations(user_id: str, limit: int = 20) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, model, created_at, updated_at "
+            "SELECT id, short_id, title, model, created_at, updated_at "
             "FROM conversations WHERE user_id = ? "
             "ORDER BY updated_at DESC LIMIT ?",
             (user_id, limit),

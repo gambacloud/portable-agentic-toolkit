@@ -50,3 +50,20 @@ def init_db() -> None:
     """Create tables if they don't exist. Safe to call multiple times."""
     with get_conn() as conn:
         conn.executescript(_SCHEMA)
+        # Migration: add short_id column if missing
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()]
+        if "short_id" not in cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN short_id TEXT")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_short_id ON conversations(short_id)")
+            # Backfill existing rows
+            rows = conn.execute("SELECT id FROM conversations WHERE short_id IS NULL").fetchall()
+            for row in rows:
+                conn.execute(
+                    "UPDATE conversations SET short_id = ? WHERE id = ?",
+                    (_gen_short_id(), row[0]),
+                )
+
+
+def _gen_short_id(length: int = 8) -> str:
+    import random, string
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))

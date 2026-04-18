@@ -204,10 +204,12 @@ async def on_start():
 
     # Create a conversation record (skipped in guest mode)
     conv_id = None
+    short_id = None
     if not is_guest:
-        conv_id = q.create_conversation(user_id, selected_model)
-        log.info("Conversation created — id=%s model=%s", conv_id, selected_model)
+        conv_id, short_id = q.create_conversation(user_id, selected_model)
+        log.info("Conversation created — id=%s short_id=%s model=%s", conv_id, short_id, selected_model)
     cl.user_session.set("conv_id", conv_id)
+    cl.user_session.set("short_id", short_id)
 
     tool_count = registry.tool_count()
     tool_msg = (
@@ -215,6 +217,7 @@ async def on_start():
         if tool_count
         else "_No MCP tools — add servers to `bin/mcp_servers/`._"
     )
+    chat_ref = f"🔖 `{short_id}`" if short_id else ""
     await cl.Message(
         content=(
             f"**{BOT_NAME}** ready. {tool_msg}\n\n"
@@ -223,6 +226,7 @@ async def on_start():
             f"🔧 [API Docs](http://localhost:{API_PORT}/docs) · "
             f"[Profiles](http://localhost:{API_PORT}/profiles) · "
             f"[Health](http://localhost:{API_PORT}/health)"
+            + (f"\n\n{chat_ref}" if chat_ref else "")
         )
     ).send()
 
