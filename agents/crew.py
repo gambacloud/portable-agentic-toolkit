@@ -69,33 +69,116 @@ def build_crew(
     return _DeferredCrew(agent, model)
 
 
+def build_hierarchical_crew(
+    model: str,
+    tools: list,
+    on_step: Optional[Callable[[str, str], None]] = None,
+    profile_id: Optional[str] = None,
+) -> "_DeferredCrew":
+    log.info("Building hierarchical crew — model=%s tools=%d profile=%s", model, len(tools), profile_id)
+
+    llm = LLM(
+        model=f"ollama/{model}",
+        base_url="http://localhost:11434",
+        temperature=0.1,
+    )
+
+    company_dna = _load_company_dna()
+    cfg = _agent_config(profile_id=profile_id)
+
+    def step_callback(agent_output):
+        if hasattr(agent_output, "tool") and agent_output.tool and on_step:
+            on_step(f"Tool: {agent_output.tool}", str(getattr(agent_output, "tool_input", "")))
+
+    def _make_agent(role: str, goal: str, backstory: str, agent_tools: list) -> Agent:
+        full_backstory = f"{company_dna}\n\n{backstory}" if company_dna else backstory
+        return Agent(
+            role=role,
+            goal=goal,
+            backstory=full_backstory,
+            llm=llm,
+            tools=agent_tools,
+            verbose=True,
+            allow_delegation=False,
+            step_callback=step_callback,
+        )
+
+    crew_cfgs = _load_crew_agent_configs()
+    if not crew_cfgs:
+        log.warning("No crew_agents in agents.yaml — falling back to single agent")
+        return build_crew(model=model, tools=tools, on_step=on_step, profile_id=profile_id)
+
+    worker_agents = [
+        _make_agent(c["role"], c["goal"], c["backstory"], tools)
+        for c in crew_cfgs
+    ]
+
+    manager_backstory = (
+        f"{company_dna}\n\n" if company_dna else ""
+    ) + (
+        cfg["backstory"] + "\n\nAs manager, break complex tasks into subtasks and "
+        "delegate to the right specialist. Synthesise their outputs into a final answer."
+    )
+    manager = Agent(
+        role="Team Manager — " + cfg["role"],
+        goal=cfg["goal"],
+        backstory=manager_backstory,
+        llm=llm,
+        tools=[],
+        verbose=True,
+        allow_delegation=True,
+        step_callback=step_callback,
+    )
+
+    return _DeferredCrew(worker_agents, model, manager=manager)
+
+
 # ── Internal ─────────────────────────────────────────────────────────────────
 
 
 class _DeferredCrew:
-    def __init__(self, agent: Agent, model: str):
+    def __init__(self, agent, model: str, manager: Optional[Agent] = None):
+        # agent may be a single Agent (sequential) or list of Agents (hierarchical)
         self._agent = agent
         self._model = model
+        self._manager = manager
 
     def kickoff(self, inputs: dict) -> str:
         task_description = inputs.get("task", "")
-        log.info("Kickoff — model=%s task_len=%d", self._model, len(task_description))
+        log.info("Kickoff — model=%s task_len=%d hierarchical=%s", self._model, len(task_description), self._manager is not None)
         log.debug("Task: %s", task_description[:200])
 
-        task = Task(
-            description=task_description,
-            expected_output=(
-                "A clear, accurate, and helpful response. "
-                "If you used tools, summarise what you found."
-            ),
-            agent=self._agent,
-        )
-        crew = Crew(
-            agents=[self._agent],
-            tasks=[task],
-            process=Process.sequential,
-            verbose=True,
-        )
+        if self._manager is not None:
+            agents = self._agent  # list of workers
+            task = Task(
+                description=task_description,
+                expected_output=(
+                    "A clear, accurate, and helpful response. "
+                    "If you used tools, summarise what you found."
+                ),
+            )
+            crew = Crew(
+                agents=agents,
+                tasks=[task],
+                process=Process.hierarchical,
+                manager_agent=self._manager,
+                verbose=True,
+            )
+        else:
+            task = Task(
+                description=task_description,
+                expected_output=(
+                    "A clear, accurate, and helpful response. "
+                    "If you used tools, summarise what you found."
+                ),
+                agent=self._agent,
+            )
+            crew = Crew(
+                agents=[self._agent],
+                tasks=[task],
+                process=Process.sequential,
+                verbose=True,
+            )
 
         t_start = time.perf_counter()
         try:
@@ -108,6 +191,25 @@ class _DeferredCrew:
             elapsed = time.perf_counter() - t_start
             log.error("Crew failed after %.2fs — %s", elapsed, exc, exc_info=True)
             raise
+
+
+def _load_crew_agent_configs() -> list[dict]:
+    if not CONFIG_PATH.exists():
+        return []
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        return [
+            {
+                "role": c.get("role", "Specialist"),
+                "goal": c.get("goal", ""),
+                "backstory": c.get("backstory", ""),
+            }
+            for c in data.get("crew_agents", [])
+        ]
+    except Exception as exc:
+        log.warning("Failed to load crew_agents: %s", exc)
+        return []
 
 
 def _load_company_dna() -> str:

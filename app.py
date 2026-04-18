@@ -25,7 +25,7 @@ import ollama as ol
 import uvicorn
 
 import db.queries as q
-from agents.crew import build_crew
+from agents.crew import build_crew, build_hierarchical_crew
 from api.server import api as rest_api
 from db.chainlit_data import SQLiteDataLayer
 from db.database import init_db
@@ -186,6 +186,11 @@ async def on_start():
                 label="Show agent thinking",
                 initial=True,
             ),
+            cl.input_widget.Switch(
+                id="multi_agent",
+                label="Multi-agent mode (needs a capable model)",
+                initial=False,
+            ),
         ]
     ).send()
 
@@ -194,6 +199,7 @@ async def on_start():
     cl.user_session.set("model", selected_model)
     cl.user_session.set("profile_id", profile_id_map.get(selected_profile_name))
     cl.user_session.set("verbose", settings.get("verbose", True))
+    cl.user_session.set("multi_agent", settings.get("multi_agent", False))
     cl.user_session.set("user_id", user_id)
 
     # Create a conversation record (skipped in guest mode)
@@ -230,6 +236,7 @@ async def on_settings_update(settings: dict):
     cl.user_session.set("model", new_model)
     cl.user_session.set("profile_id", profile_id)
     cl.user_session.set("verbose", settings.get("verbose", True))
+    cl.user_session.set("multi_agent", settings.get("multi_agent", False))
     log.info(
         "Settings updated — model=%s profile=%s verbose=%s",
         new_model, profile_name, settings.get("verbose"),
@@ -281,8 +288,9 @@ async def on_message(message: cl.Message):
 
     t_start = time.perf_counter()
     try:
+        multi_agent: bool = cl.user_session.get("multi_agent", False)
         result = await asyncio.to_thread(
-            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id
+            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent
         )
         elapsed = time.perf_counter() - t_start
         log.info("Crew finished in %.2fs", elapsed)
@@ -323,9 +331,10 @@ async def _emit_step(name: str, content: str):
         step.output = content
 
 
-def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None) -> str:
+def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False) -> str:
     tools = registry.get_crewai_tools(ask_user_fn) if registry else []
     tools = tools + [make_installer_tool(ask_user_fn)]
-    log.debug("Building crew — model=%s tools=%d profile=%s", model, len(tools), profile_id)
-    crew = build_crew(model=model, tools=tools, on_step=on_step_fn, profile_id=profile_id)
+    log.debug("Building crew — model=%s tools=%d profile=%s multi=%s", model, len(tools), profile_id, multi_agent)
+    builder = build_hierarchical_crew if multi_agent else build_crew
+    crew = builder(model=model, tools=tools, on_step=on_step_fn, profile_id=profile_id)
     return crew.kickoff(inputs={"task": user_message})
