@@ -3,6 +3,7 @@ Portable Agentic Toolkit — Chainlit UI entry point.
 Run with: uv run chainlit run app.py
 """
 import asyncio
+import time
 from pathlib import Path
 
 import chainlit as cl
@@ -10,6 +11,9 @@ import ollama as ol
 
 from agents.crew import build_crew
 from mcp_tools.registry import MCPRegistry
+from utils.logger import get_logger
+
+log = get_logger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent
 MCP_SERVERS_DIR = PROJECT_ROOT / "bin" / "mcp_servers"
@@ -19,10 +23,11 @@ MCP_SERVERS_DIR = PROJECT_ROOT / "bin" / "mcp_servers"
 
 @cl.on_chat_start
 async def on_start():
-    # Discover Ollama models
-    model_names = _get_ollama_models()
+    log.info("New session started")
 
+    model_names = _get_ollama_models()
     if not model_names:
+        log.warning("Ollama unreachable or no models installed")
         await cl.Message(
             content=(
                 "**Ollama is not running or has no models.**\n\n"
@@ -31,14 +36,15 @@ async def on_start():
                 "Then refresh this page."
             )
         ).send()
-        model_names = ["llama3.2"]  # fallback label
+        model_names = ["llama3.2"]
+    else:
+        log.info("Available models: %s", ", ".join(model_names))
 
-    # Discover MCP tools (async scan)
     registry = MCPRegistry(MCP_SERVERS_DIR)
     await registry.discover()
     cl.user_session.set("registry", registry)
+    log.info("MCP discovery complete — %d tool(s) loaded", registry.tool_count())
 
-    # Build UI settings panel
     settings = await cl.ChatSettings(
         [
             cl.input_widget.Select(
@@ -55,8 +61,10 @@ async def on_start():
         ]
     ).send()
 
-    cl.user_session.set("model", settings.get("model", model_names[0]))
+    selected_model = settings.get("model", model_names[0])
+    cl.user_session.set("model", selected_model)
     cl.user_session.set("verbose", settings.get("verbose", True))
+    log.info("Session initialised — model=%s tools=%d", selected_model, registry.tool_count())
 
     tool_count = registry.tool_count()
     tool_msg = f"**{tool_count} MCP tool(s) loaded**" if tool_count else (
@@ -69,8 +77,10 @@ async def on_start():
 
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
-    cl.user_session.set("model", settings.get("model"))
+    new_model = settings.get("model")
+    cl.user_session.set("model", new_model)
     cl.user_session.set("verbose", settings.get("verbose", True))
+    log.info("Settings updated — model=%s verbose=%s", new_model, settings.get("verbose"))
 
 
 # ── Message handler ─────────────────────────────────────────────────────────
@@ -82,30 +92,38 @@ async def on_message(message: cl.Message):
     verbose: bool = cl.user_session.get("verbose", True)
     registry: MCPRegistry = cl.user_session.get("registry")
 
+    log.info("Message received (model=%s, len=%d)", model, len(message.content))
+    log.debug("Message content: %s", message.content[:200])
+
     loop = asyncio.get_event_loop()
 
     # ── Human-in-the-loop: synchronous bridge from agent thread → Chainlit ──
     def ask_user_sync(prompt: str, choices: list[str]) -> str:
-        """Block the agent thread until the user responds in the UI."""
+        log.info("HITL prompt shown to user (choices=%s)", choices)
         future = asyncio.run_coroutine_threadsafe(
             _ask_user_async(prompt, choices), loop
         )
         try:
-            return future.result(timeout=120)
-        except Exception:
-            return choices[-1]  # default: last option (usually Deny)
+            decision = future.result(timeout=120)
+            log.info("HITL decision: %s", decision)
+            return decision
+        except Exception as exc:
+            log.warning("HITL timed out or failed (%s) — defaulting to '%s'", exc, choices[-1])
+            return choices[-1]
 
     # ── Agent step callback: stream thinking to Chainlit Steps ──────────────
     def on_agent_step(step_name: str, content: str):
+        log.debug("Agent step — %s: %s", step_name, content[:120])
         if verbose:
             asyncio.run_coroutine_threadsafe(
                 _emit_step(step_name, content), loop
             )
 
-    # ── Build crew and stream final answer ───────────────────────────────────
+    # ── Run crew and return response ─────────────────────────────────────────
     response_msg = cl.Message(content="")
     await response_msg.send()
 
+    t_start = time.perf_counter()
     try:
         result = await asyncio.to_thread(
             _run_crew_sync,
@@ -115,9 +133,14 @@ async def on_message(message: cl.Message):
             ask_user_sync,
             on_agent_step,
         )
+        elapsed = time.perf_counter() - t_start
+        log.info("Crew finished in %.2fs (model=%s)", elapsed, model)
+        log.debug("Crew result: %s", str(result)[:200])
         response_msg.content = str(result)
         await response_msg.update()
     except Exception as exc:
+        elapsed = time.perf_counter() - t_start
+        log.error("Crew failed after %.2fs — %s", elapsed, exc, exc_info=True)
         response_msg.content = f"**Error:** {exc}"
         await response_msg.update()
 
@@ -129,7 +152,8 @@ def _get_ollama_models() -> list[str]:
     try:
         resp = ol.list()
         return [m.model for m in (resp.models or [])]
-    except Exception:
+    except Exception as exc:
+        log.debug("Ollama list() failed: %s", exc)
         return []
 
 
@@ -155,5 +179,6 @@ def _run_crew_sync(
 ) -> str:
     """Runs CrewAI synchronously inside asyncio.to_thread."""
     tools = registry.get_crewai_tools(ask_user_fn) if registry else []
+    log.debug("Building crew — model=%s tools=%d", model, len(tools))
     crew = build_crew(model=model, tools=tools, on_step=on_step_fn)
     return crew.kickoff(inputs={"task": user_message})

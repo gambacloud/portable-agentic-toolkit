@@ -5,11 +5,16 @@ config/agents.yaml, so you can tune behaviour without touching code.
 """
 from __future__ import annotations
 
+import time
 import yaml
 from pathlib import Path
 from typing import Callable, Optional
 
 from crewai import Agent, Crew, LLM, Process, Task
+
+from utils.logger import get_logger
+
+log = get_logger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "agents.yaml"
 
@@ -22,11 +27,8 @@ def build_crew(
     tools: list,
     on_step: Optional[Callable[[str, str], None]] = None,
 ) -> "_DeferredCrew":
-    """
-    Returns a crew-like object whose .kickoff(inputs) accepts a single
-    'task' key, constructs a CrewAI Task dynamically, and returns the
-    raw result string.
-    """
+    log.info("Building crew — model=%s tools=%d", model, len(tools))
+
     llm = LLM(
         model=f"ollama/{model}",
         base_url="http://localhost:11434",
@@ -34,12 +36,18 @@ def build_crew(
     )
 
     cfg = _agent_config()
+    log.debug("Agent role: %s", cfg["role"])
 
     def step_callback(agent_output):
-        """Forward each ReAct step to the Chainlit UI as a Step."""
-        if on_step and hasattr(agent_output, "tool") and agent_output.tool:
+        if hasattr(agent_output, "tool") and agent_output.tool:
             tool_input = getattr(agent_output, "tool_input", "")
-            on_step(f"Tool: {agent_output.tool}", str(tool_input))
+            log.debug(
+                "Agent step — tool=%s input=%s",
+                agent_output.tool,
+                str(tool_input)[:120],
+            )
+            if on_step:
+                on_step(f"Tool: {agent_output.tool}", str(tool_input))
 
     agent = Agent(
         role=cfg["role"],
@@ -52,20 +60,22 @@ def build_crew(
         step_callback=step_callback,
     )
 
-    return _DeferredCrew(agent)
+    return _DeferredCrew(agent, model)
 
 
 # ── Internal ─────────────────────────────────────────────────────────────────
 
 
 class _DeferredCrew:
-    """Creates a fresh Crew per kickoff() call — safe for multi-turn chat."""
-
-    def __init__(self, agent: Agent):
+    def __init__(self, agent: Agent, model: str):
         self._agent = agent
+        self._model = model
 
     def kickoff(self, inputs: dict) -> str:
         task_description = inputs.get("task", "")
+        log.info("Kickoff — model=%s task_len=%d", self._model, len(task_description))
+        log.debug("Task: %s", task_description[:200])
+
         task = Task(
             description=task_description,
             expected_output=(
@@ -80,8 +90,18 @@ class _DeferredCrew:
             process=Process.sequential,
             verbose=True,
         )
-        result = crew.kickoff()
-        return result.raw if hasattr(result, "raw") else str(result)
+
+        t_start = time.perf_counter()
+        try:
+            result = crew.kickoff()
+            elapsed = time.perf_counter() - t_start
+            raw = result.raw if hasattr(result, "raw") else str(result)
+            log.info("Crew completed in %.2fs — result_len=%d", elapsed, len(raw))
+            return raw
+        except Exception as exc:
+            elapsed = time.perf_counter() - t_start
+            log.error("Crew failed after %.2fs — %s", elapsed, exc, exc_info=True)
+            raise
 
 
 def _agent_config() -> dict:
@@ -100,6 +120,7 @@ def _agent_config() -> dict:
     }
 
     if not CONFIG_PATH.exists():
+        log.debug("No agents.yaml found — using defaults")
         return defaults
 
     try:
@@ -113,7 +134,7 @@ def _agent_config() -> dict:
                 "goal": cfg.get("goal", defaults["goal"]),
                 "backstory": cfg.get("backstory", defaults["backstory"]),
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("Failed to load agents.yaml (%s) — using defaults", exc)
 
     return defaults

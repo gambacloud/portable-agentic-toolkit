@@ -16,9 +16,9 @@ build/
 .files/
 chainlit.db
 
-# Logs
-*.log
-logs/
+# Logs — keep the dir, ignore the files
+logs/*.log
+logs/*.log.*
 
 # Environment / secrets
 .env
