@@ -33,3 +33,6 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]   # pycodestyle + pyflakes + isort
 ignore = ["E501"]                # long lines handled by formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["agents", "mcp_tools", "utils"]
