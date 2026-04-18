@@ -61,7 +61,7 @@ def _install(server_name: str, catalog: dict, ask_user_fn: Callable) -> str:
         ["Install", "Cancel"],
     )
     if decision == "Cancel":
-        return f"Installation of '{server_name}' cancelled."
+        return f"The user declined to install '{server_name}'. Do not retry — report this outcome as your final answer."
 
     env_section = {}
     instructions = []

@@ -65,6 +65,7 @@ def build_crew(
         tools=tools,
         verbose=True,
         allow_delegation=False,
+        max_iter=5,
         step_callback=step_callback,
     )
 
@@ -119,6 +120,7 @@ def build_hierarchical_crew(
             tools=agent_tools,
             verbose=True,
             allow_delegation=False,
+            max_iter=5,
             step_callback=step_callback,
         )
 
