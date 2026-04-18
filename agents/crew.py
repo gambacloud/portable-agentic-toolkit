@@ -6,10 +6,10 @@ config/agents.yaml, so you can tune behaviour without touching code.
 from __future__ import annotations
 
 import time
-import yaml
 from pathlib import Path
 from typing import Callable, Optional
 
+import yaml
 from crewai import Agent, Crew, LLM, Process, Task
 
 from utils.logger import get_logger

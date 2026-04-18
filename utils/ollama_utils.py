@@ -1,6 +1,4 @@
 """Helpers for detecting and interacting with the local Ollama service."""
-from __future__ import annotations
-
 import httpx
 import ollama
 
