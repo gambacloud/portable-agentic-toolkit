@@ -19,6 +19,7 @@ _SERVERS_DIR = Path(__file__).parent.parent / "bin" / "mcp_servers"
 def make_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> BaseTool:
     catalog = _load_catalog()
     available = ", ".join(catalog) if catalog else "none"
+    _blocked = [False]  # flipped on first cancel; shared across all calls this turn
 
     class _InstallerTool(BaseTool):
         name: str = "install_mcp_server"
@@ -30,7 +31,12 @@ def make_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> BaseToo
         cache_function = lambda self, *args, **kwargs: False  # noqa: E731
 
         def _run(self, server_name: str) -> str:
-            return _install(server_name.strip().lower(), catalog, ask_user_fn)
+            if _blocked[0]:
+                return "Installation was already declined this turn. Give your final answer now."
+            result = _install(server_name.strip().lower(), catalog, ask_user_fn)
+            if "declined" in result:
+                _blocked[0] = True
+            return result
 
     return _InstallerTool()
 
