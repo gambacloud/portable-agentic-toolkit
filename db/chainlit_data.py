@@ -59,7 +59,10 @@ try:
         async def list_threads(self, pagination, filters):
             from chainlit.types import PaginatedResponse
 
-            user_id = getattr(filters, "userId", None)
+            user_id = (
+                getattr(filters, "userId", None)
+                or getattr(filters, "userIdentifier", None)
+            )
             if not user_id:
                 return PaginatedResponse(
                     data=[], pageInfo={"hasNextPage": False, "endCursor": None}
