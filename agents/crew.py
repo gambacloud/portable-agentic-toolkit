@@ -68,7 +68,7 @@ def build_crew(
         step_callback=step_callback,
     )
 
-    return _DeferredCrew(agent, model)
+    return _DeferredCrew(agent, model, on_step=on_step)
 
 
 def build_hierarchical_crew(
@@ -149,25 +149,39 @@ def build_hierarchical_crew(
         step_callback=step_callback,
     )
 
-    return _DeferredCrew(worker_agents, model, manager=manager)
+    return _DeferredCrew(worker_agents, model, manager=manager, on_step=on_step)
 
 
 # ── Internal ─────────────────────────────────────────────────────────────────
 
 
 class _DeferredCrew:
-    def __init__(self, agent, model: str, manager: Optional[Agent] = None):
-        # agent may be a single Agent (sequential) or list of Agents (hierarchical)
+    def __init__(self, agent, model: str, manager: Optional[Agent] = None, on_step: Optional[Callable] = None):
         self._agent = agent
         self._model = model
         self._manager = manager
+        self._on_step = on_step
 
     def kickoff(self, inputs: dict) -> str:
         task_description = inputs.get("task", "")
-        log.info("Kickoff — model=%s task_len=%d hierarchical=%s", self._model, len(task_description), self._manager is not None)
+        on_step = self._on_step
+        hierarchical = self._manager is not None
+        log.info("Kickoff — model=%s task_len=%d hierarchical=%s", self._model, len(task_description), hierarchical)
         log.debug("Task: %s", task_description[:200])
 
-        if self._manager is not None:
+        if on_step:
+            mode = "multi-agent" if hierarchical else "single agent"
+            on_step(f"🚀 Starting ({mode})", f"model: {self._model}")
+
+        def task_done(task_output):
+            if not on_step:
+                return
+            agent_name = (getattr(task_output, "agent", None) or "Agent")
+            if hasattr(agent_name, "role"):
+                agent_name = agent_name.role
+            on_step(f"✅ {str(agent_name)[:50]}", "task complete")
+
+        if hierarchical:
             agents = self._agent  # list of workers
             task = Task(
                 description=task_description,
@@ -182,6 +196,7 @@ class _DeferredCrew:
                 process=Process.hierarchical,
                 manager_agent=self._manager,
                 verbose=True,
+                task_callback=task_done,
             )
         else:
             task = Task(
@@ -197,6 +212,7 @@ class _DeferredCrew:
                 tasks=[task],
                 process=Process.sequential,
                 verbose=True,
+                task_callback=task_done,
             )
 
         t_start = time.perf_counter()

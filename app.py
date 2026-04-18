@@ -278,9 +278,12 @@ async def on_message(message: cl.Message):
             log.warning("HITL timed out (%s) — defaulting to '%s'", exc, choices[-1])
             return choices[-1]
 
+    _ALWAYS_SHOW = {"🚀", "✅"}
+
     def on_agent_step(step_name: str, content: str):
         log.debug("Agent step — %s: %s", step_name, content[:120])
-        if verbose:
+        always = any(step_name.startswith(p) for p in _ALWAYS_SHOW)
+        if verbose or always:
             asyncio.run_coroutine_threadsafe(_emit_step(step_name, content), loop)
 
     response_msg = cl.Message(content="")
