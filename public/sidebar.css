@@ -1,7 +1,7 @@
 #pat-panel {
     position: fixed;
     top: 60px;
-    left: 0;
+    right: 0;
     width: 168px;
     height: calc(100vh - 60px);
     z-index: 9000;
@@ -10,7 +10,7 @@
     gap: 2px;
     background: rgba(15, 15, 25, 0.92);
     backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    border-left: 1px solid rgba(255, 255, 255, 0.07);
     padding: 12px 8px 24px 8px;
     overflow-y: auto;
     box-sizing: border-box;
