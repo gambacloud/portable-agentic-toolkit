@@ -25,11 +25,11 @@ import ollama as ol
 import uvicorn
 
 import db.queries as q
-from agents.crew import build_crew, build_hierarchical_crew
+from agents.runner import build_crew, build_hierarchical_crew
 from api.server import api as rest_api
 from db.chainlit_data import SQLiteDataLayer
 from db.database import init_db
-from mcp_tools.installer import make_installer_tool
+from mcp_tools.installer import make_runner_installer_tool
 from mcp_tools.registry import MCPRegistry
 from utils.logger import get_logger
 
@@ -340,9 +340,19 @@ async def _emit_step(name: str, content: str):
 
 
 def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False) -> str:
-    tools = registry.get_crewai_tools(ask_user_fn) if registry else []
-    tools = tools + [make_installer_tool(ask_user_fn)]
-    log.debug("Building crew — model=%s tools=%d profile=%s multi=%s", model, len(tools), profile_id, multi_agent)
+    tool_defs: list = []
+    tool_map: dict = {}
+
+    if registry:
+        t_defs, t_map = registry.get_runner_tools(ask_user_fn)
+        tool_defs += t_defs
+        tool_map.update(t_map)
+
+    inst_def, inst_fn = make_runner_installer_tool(ask_user_fn)
+    tool_defs.append(inst_def)
+    tool_map["install_mcp_server"] = inst_fn
+
+    log.debug("Building runner — model=%s tools=%d profile=%s multi=%s", model, len(tool_defs), profile_id, multi_agent)
     builder = build_hierarchical_crew if multi_agent else build_crew
-    crew = builder(model=model, tools=tools, on_step=on_step_fn, profile_id=profile_id)
-    return crew.kickoff(inputs={"task": user_message})
+    runner = builder(model=model, tool_defs=tool_defs, tool_map=tool_map, on_step=on_step_fn, profile_id=profile_id)
+    return runner.kickoff(inputs={"task": user_message})

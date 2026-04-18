@@ -41,6 +41,43 @@ def make_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> BaseToo
     return _InstallerTool()
 
 
+def make_runner_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> tuple[dict, Callable]:
+    """Return (ollama_tool_def, callable) for the direct Ollama runner."""
+    catalog = _load_catalog()
+    available = ", ".join(catalog) if catalog else "none"
+    _blocked = [False]
+
+    def install_mcp_server(server_name: str) -> str:
+        if _blocked[0]:
+            return "Installation already declined this turn. Provide your final answer now."
+        result = _install(server_name.strip().lower(), catalog, ask_user_fn)
+        if "declined" in result:
+            _blocked[0] = True
+        return result
+
+    tool_def = {
+        "type": "function",
+        "function": {
+            "name": "install_mcp_server",
+            "description": (
+                "Install a new MCP server to connect to an external service. "
+                f"Known servers: {available}."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "Name of the MCP server to install",
+                    }
+                },
+                "required": ["server_name"],
+            },
+        },
+    }
+    return tool_def, install_mcp_server
+
+
 # ── Internal ──────────────────────────────────────────────────────────────────
 
 

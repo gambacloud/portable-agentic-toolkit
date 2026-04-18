@@ -92,6 +92,37 @@ class MCPRegistry:
         log.debug("Returning %d CrewAI tool wrapper(s)", len(tools))
         return tools
 
+    def get_runner_tools(self, ask_user_fn: Optional[Callable] = None) -> tuple[list[dict], dict]:
+        """Return (tool_defs, tool_map) for the direct Ollama runner."""
+        tool_defs: list[dict] = []
+        tool_map: dict[str, Callable] = {}
+
+        for server_name, server_data in self._servers.items():
+            config = server_data["config"]
+            needs_confirm = config.get("requires_confirmation", False)
+
+            for t in server_data["tools"]:
+                safe_name = f"{server_name}__{t['name']}".replace("-", "_")
+                schema = dict(t.get("input_schema") or {})
+                schema.setdefault("type", "object")
+                schema.setdefault("properties", {})
+
+                tool_defs.append({
+                    "type": "function",
+                    "function": {
+                        "name": safe_name,
+                        "description": f"[MCP:{server_name}] {t.get('description', t['name'])}",
+                        "parameters": schema,
+                    },
+                })
+                tool_map[safe_name] = _make_runner_callable(
+                    config, t["name"], needs_confirm, ask_user_fn,
+                    get_logger(f"mcp.{server_name}.{t['name']}"),
+                )
+
+        log.debug("Runner tools prepared: %d", len(tool_defs))
+        return tool_defs, tool_map
+
     def tool_descriptions(self) -> str:
         if not self._servers:
             return "No MCP tools available."
@@ -172,6 +203,26 @@ def _make_mcp_tool(
 
 
 # ── Async MCP helpers ────────────────────────────────────────────────────────
+
+
+def _make_runner_callable(config, tool_name, needs_confirm, ask_user_fn, logger):
+    def fn(**kwargs):
+        if needs_confirm and ask_user_fn:
+            import json as _json
+            preview = _json.dumps(kwargs, indent=2)
+            decision = ask_user_fn(
+                f"**Tool `{tool_name}` wants to run** with:\n```json\n{preview}\n```\nAllow?",
+                ["Allow", "Deny"],
+            )
+            if decision != "Allow":
+                logger.warning("Tool '%s' denied", tool_name)
+                return "Action denied by user."
+        try:
+            return asyncio.run(_call_tool(config, tool_name, kwargs))
+        except Exception as exc:
+            logger.error("Tool error: %s", exc)
+            return f"Tool error: {exc}"
+    return fn
 
 
 async def _list_tools(config: dict) -> list[dict]:
