@@ -222,12 +222,22 @@ class _DeferredCrew:
             result = crew.kickoff()
             elapsed = time.perf_counter() - t_start
             raw = result.raw if hasattr(result, "raw") else str(result)
+            raw = _sanitize_output(raw)
             log.info("Crew completed in %.2fs — result_len=%d", elapsed, len(raw))
             return raw
         except Exception as exc:
             elapsed = time.perf_counter() - t_start
             log.error("Crew failed after %.2fs — %s", elapsed, exc, exc_info=True)
             raise
+
+
+def _sanitize_output(raw: str) -> str:
+    """Replace JSON tool-call hallucinations with a plain error message."""
+    stripped = raw.strip()
+    if stripped.startswith("{") and '"parameters"' in stripped:
+        log.warning("LLM returned raw JSON as final answer — replacing with error message")
+        return "I was unable to complete the task. The model returned an invalid response."
+    return raw
 
 
 def _load_crew_agent_configs() -> list[dict]:
