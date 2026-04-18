@@ -1,0 +1,8 @@
+# Normalise line endings: LF in repo, native checkout
+* text=auto
+
+# Shell scripts must stay LF even on Windows
+*.sh text eol=lf
+
+# Batch files must stay CRLF on Windows
+*.bat text eol=crlf

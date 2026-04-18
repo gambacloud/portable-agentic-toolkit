@@ -1,0 +1,41 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Chainlit runtime files
+.chainlit/translations/
+.files/
+chainlit.db
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Model cache (Ollama stores models globally, not here)
+models/
+
+# Temp
+*.tmp
+*.bak
