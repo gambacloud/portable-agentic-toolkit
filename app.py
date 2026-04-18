@@ -4,11 +4,13 @@ Run with: uv run chainlit run app.py
 """
 import asyncio
 import os
+import threading
 import time
 from pathlib import Path
 
 import chainlit as cl
 import ollama as ol
+import uvicorn
 
 import db.queries as q
 from agents.crew import build_crew
@@ -21,17 +23,20 @@ log = get_logger(__name__)
 
 BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 APP_MODE = os.getenv("APP_MODE", "SINGLE").upper()
+API_PORT = int(os.getenv("API_PORT", "8001"))
 PROJECT_ROOT = Path(__file__).parent
 MCP_SERVERS_DIR = PROJECT_ROOT / "bin" / "mcp_servers"
 
-# ── Initialise DB and mount REST API on Chainlit's server ────────────────────
+# ── Initialise DB and start REST API on its own port ─────────────────────────
 
 init_db()
 log.info("%s starting — DB initialised  mode=%s", BOT_NAME, APP_MODE)
 
-from chainlit.server import app as cl_server  # noqa: E402 — must come after cl import
-cl_server.mount("/api", rest_api)
-log.info("REST API mounted at /api  (docs: /api/docs)")
+def _run_api():
+    uvicorn.run(rest_api, host="localhost", port=API_PORT, log_level="warning")
+
+threading.Thread(target=_run_api, daemon=True, name="api-server").start()
+log.info("REST API started — http://localhost:%d  (docs: http://localhost:%d/docs)", API_PORT, API_PORT)
 
 
 # ── Header-based identity ────────────────────────────────────────────────────
@@ -143,7 +148,14 @@ async def on_start():
         else "_No MCP tools — add servers to `bin/mcp_servers/`._"
     )
     await cl.Message(
-        content=f"**{BOT_NAME}** ready. {tool_msg}\n\nSelect a model above and start chatting."
+        content=(
+            f"**{BOT_NAME}** ready. {tool_msg}\n\n"
+            f"Select a model and expert profile above, then start chatting.\n\n"
+            f"---\n"
+            f"🔧 [API Docs](http://localhost:{API_PORT}/docs) · "
+            f"[Profiles](http://localhost:{API_PORT}/profiles) · "
+            f"[Health](http://localhost:{API_PORT}/health)"
+        )
     ).send()
 
 
