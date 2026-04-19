@@ -90,9 +90,11 @@ def _setup_ui_assets():
     original = content
 
     for key, val in [
-        ("custom_css", '"/public/sidebar.css"'),
+        ("custom_css", '"/public/sidebar.css?v=2"'),
         ("custom_js", '"/public/sidebar.js"'),
         ("default_sidebar_state", '"open"'),
+        ("logo_file_url", '"/public/logo_dark.png"'),
+        ("default_avatar_file_url", '"/public/logo_dark.png"'),
     ]:
         if re.search(rf'^{key}\s*=', content, re.MULTILINE):
             continue  # already set (uncommented)
