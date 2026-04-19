@@ -143,7 +143,7 @@ class _OllamaAgent:
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
                 raw_args = tc.function.arguments or {}
-                
+
                 parsed = _parse_tool_args(raw_args)
                 if isinstance(parsed, str):
                     log.warning("Tool call JSON parse failed for %s", fn_name)
@@ -217,7 +217,7 @@ class _OllamaAgent:
             for tc in msg.tool_calls:
                 fn_name = tc.function.name
                 raw_args = tc.function.arguments or "{}"
-                
+
                 parsed = _parse_tool_args(raw_args)
                 if isinstance(parsed, str):
                     log.warning("Tool call JSON parse failed for %s", fn_name)
@@ -309,7 +309,7 @@ class _Runner:
 
             if on_step:
                 on_step(f"✅ {agent.role[:40]}", "done")
-                
+
             return f"**{agent.role}**:\n{result}"
 
         # Run workers concurrently
@@ -319,8 +319,7 @@ class _Runner:
                 context_parts = list(executor.map(_run_worker, self._agents))
 
         # Manager synthesizes all worker outputs
-        from agents.crew import _agent_config, _load_company_dna
-        cfg = _agent_config()
+        from agents.crew import _load_company_dna
         dna = _load_company_dna()
         mcfg = self._manager_cfg
 
@@ -351,16 +350,16 @@ def _parse_tool_args(raw_args) -> dict | str:
         return raw_args
     if not isinstance(raw_args, str):
         return {}
-        
+
     s = raw_args.strip()
     if not s:
         return {}
-        
+
     try:
         return json.loads(s)
     except json.JSONDecodeError:
         pass
-        
+
     # Attempt to strip markdown blocks if model hallucinated them
     m = re.search(r"```(?:json)?\s*(.*?)\s*```", s, re.DOTALL)
     if m:
@@ -368,7 +367,7 @@ def _parse_tool_args(raw_args) -> dict | str:
             return json.loads(m.group(1))
         except json.JSONDecodeError:
             pass
-            
+
     # Generic cleanup (e.g., trailing commas before braces)
     s_clean = re.sub(r",(\s*[}\]])", r"\1", s)
     try:

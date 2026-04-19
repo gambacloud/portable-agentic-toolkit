@@ -59,7 +59,7 @@ def _run_api():
 threading.Thread(target=_run_api, daemon=True, name="api-server").start()
 log.info("REST API started — http://localhost:%d  (docs: http://localhost:%d/docs)", API_PORT, API_PORT)
 
-from scheduler.engine import get_engine as _get_scheduler
+from scheduler.engine import get_engine as _get_scheduler  # noqa: E402
 _get_scheduler().start()
 
 # ── Register Chainlit data layer (conversation history sidebar) ───────────────
@@ -271,14 +271,14 @@ async def on_chat_resume(thread):
     # Set conv_id to the thread ID so new messages append to this session
     conv_id = thread["id"]
     cl.user_session.set("conv_id", conv_id)
-    
+
     metadata = thread.get("metadata", {})
     cl.user_session.set("model", metadata.get("model") or "llama3.2")
     cl.user_session.set("profile_id", None)
     cl.user_session.set("verbose", True)
     cl.user_session.set("multi_agent", False)
     cl.user_session.set("active_mcps", registry.server_names())
-    
+
     log.info("Conversation resumed — id=%s user=%s", conv_id, user_id)
 
 
