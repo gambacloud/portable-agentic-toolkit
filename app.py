@@ -242,12 +242,8 @@ async def on_start():
     await cl.Message(
         content=(
             f"**{BOT_NAME}** ready. {tool_msg}\n\n"
-            f"Select a model and expert profile above, then start chatting.\n\n"
-            f"---\n"
-            f"🔧 [API Docs](http://localhost:{API_PORT}/docs) · "
-            f"[Profiles](http://localhost:{API_PORT}/profiles) · "
-            f"[Health](http://localhost:{API_PORT}/health)"
-            + (f"\n\n{chat_ref}" if chat_ref else "")
+            f"Click the settings icon ⚙️ below to select a model and expert profile, then start chatting."
+            + (f"\n\n_Conversation: {chat_ref}_" if chat_ref else "")
         )
     ).send()
 
