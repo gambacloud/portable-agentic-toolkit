@@ -7,7 +7,7 @@ existing conversations for display and deletion.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import db.queries as q
 from utils.logger import get_logger

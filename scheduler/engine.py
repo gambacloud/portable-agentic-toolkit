@@ -112,10 +112,10 @@ def _run_task(task: str, model: str, active_mcps: Optional[list]) -> str:
         t_map["install_mcp_server"] = inst_fn
 
         runner = build_crew(model=model, tool_defs=t_defs, tool_map=t_map)
-        
+
         # Run synchronous kickoff in a thread to keep async loop responsive for tools
         result = await asyncio.to_thread(runner.kickoff, {"task": task})
-        
+
         await registry.close()
         return result
 

@@ -78,5 +78,6 @@ def init_db() -> None:
 
 
 def _gen_short_id(length: int = 8) -> str:
-    import random, string
+    import random
+    import string
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))

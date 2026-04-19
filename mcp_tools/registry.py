@@ -93,9 +93,9 @@ class MCPRegistry:
         read, write = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
-        
+
         self._sessions[server_name] = session
-        
+
         result = await session.list_tools()
         return [
             {
