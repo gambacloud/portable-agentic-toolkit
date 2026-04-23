@@ -82,3 +82,31 @@
 #pat-panel a:hover span {
     transform: scale(1.1);
 }
+
+#pat-panel .pat-toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(220, 220, 235, 0.6);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+#pat-panel .pat-toggle:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(220, 220, 235, 0.9);
+}
+
+#pat-panel .pat-toggle.pat-toggle-on {
+    border-color: rgba(99, 179, 237, 0.4);
+    background: rgba(99, 179, 237, 0.1);
+    color: rgba(147, 210, 255, 0.9);
+}
