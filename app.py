@@ -212,7 +212,7 @@ async def on_start():
                 id="active_mcps",
                 label="Active MCP Servers",
                 values=server_names,
-                initial_value=server_names,
+                initial=server_names,
             )
         )
     settings = await cl.ChatSettings(widgets).send()
@@ -341,12 +341,26 @@ async def on_message(message: cl.Message):
     user_id: str = cl.user_session.get("user_id", "local")
     conv_id: str = cl.user_session.get("conv_id")
 
-    log.info("Message received — user=%s model=%s len=%d", user_id, model, len(message.content))
-    log.debug("Message content: %s", message.content[:200])
+    task_content = message.content
+
+    if message.elements:
+        file_texts = []
+        for el in message.elements:
+            if hasattr(el, "path") and el.path:
+                try:
+                    with open(el.path, "r", encoding="utf-8") as f:
+                        file_texts.append(f"file {getattr(el, 'name', 'unknown')}: {f.read()}")
+                except Exception as e:
+                    log.warning("Could not read attached file %s: %s", getattr(el, "name", "unknown"), e)
+        if file_texts:
+            task_content += "\n\n" + "\n".join(file_texts)
+
+    log.info("Message received — user=%s model=%s len=%d", user_id, model, len(task_content))
+    log.debug("Message content: %s", task_content[:200])
 
     # Persist user message
     if persist and conv_id:
-        q.append_message(conv_id, "user", message.content)
+        q.append_message(conv_id, "user", task_content)
 
     loop = asyncio.get_event_loop()
 
@@ -378,7 +392,7 @@ async def on_message(message: cl.Message):
     try:
         multi_agent: bool = cl.user_session.get("multi_agent", False)
         result = await asyncio.to_thread(
-            _run_crew_sync, message.content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent, active_mcps
+            _run_crew_sync, task_content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent, active_mcps
         )
         elapsed = time.perf_counter() - t_start
         log.info("Crew finished in %.2fs — result_len=%d", elapsed, len(str(result)))
