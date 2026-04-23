@@ -1,0 +1,10 @@
+{
+  "name": "duckduckgo",
+  "command": "uvx",
+  "args": [
+    "duckduckgo-mcp-server"
+  ],
+  "env": {},
+  "requires_confirmation": false,
+  "enabled": true
+}

@@ -9,6 +9,13 @@ servers:
     requires_confirmation: false
     env_vars: []
 
+  duckduckgo:
+    package: "duckduckgo-mcp-server"
+    command: "uvx"
+    description: "Web search via DuckDuckGo — no API key needed"
+    requires_confirmation: false
+    env_vars: []
+
   brave_search:
     package: "@modelcontextprotocol/server-brave-search"
     description: "Web search via Brave Search API"
@@ -25,21 +32,6 @@ servers:
     env_vars:
       - key: GITHUB_TOKEN
         description: "GitHub personal access token (repo scope)"
-        required: true
-
-  filesystem:
-    package: "@modelcontextprotocol/server-filesystem"
-    description: "Read and write files on the local machine"
-    requires_confirmation: true
-    env_vars: []
-
-  gmail:
-    package: "@gongrzhe/server-gmail-autoauth-mcp"
-    description: "Read and send Gmail emails via Google OAuth"
-    requires_confirmation: true
-    env_vars:
-      - key: GMAIL_CREDENTIALS_PATH
-        description: "Path to your Google OAuth credentials JSON (from Google Cloud Console)"
         required: true
 
   slack:

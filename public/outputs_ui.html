@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Output Channels</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --success: #10b981;
+    --warning: #f59e0b;
+  }
+  body {
+    background: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                      radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  p.subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .card-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-enabled  { background: rgba(16,185,129,0.2); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+  .card-meta {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.7;
+    margin-top: 0.5rem;
+  }
+  .card-meta code {
+    background: rgba(0,0,0,0.3);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+  }
+  .card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }
+  button {
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent); color: white; }
+  .btn-primary:hover:not(:disabled)  { background: var(--accent-hover); }
+  .btn-danger   { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover:not(:disabled)   { background: rgba(239,68,68,0.25); }
+  .btn-ghost    { background: rgba(255,255,255,0.06); color: var(--text-main); border: 1px solid rgba(255,255,255,0.1); }
+  .btn-ghost:hover:not(:disabled)    { background: rgba(255,255,255,0.1); }
+  .btn-success  { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+  .btn-success:hover:not(:disabled)  { background: rgba(16,185,129,0.25); }
+
+  /* Create form */
+  .section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    color: var(--text-main);
+  }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-full  { grid-column: 1 / -1; }
+  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  input[type="text"], input[type="password"], select {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+    color: white; padding: 0.65rem 0.9rem; border-radius: 8px;
+    font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+    font-family: inherit;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--bg-color); color: white; }
+  .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+  #loading { display: none; text-align: center; padding: 3rem; color: var(--text-muted); }
+  .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 3px solid rgba(255,255,255,0.3); border-radius: 50%;
+    border-top-color: white; animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📢 Output Channels</h1>
+  <p class="subtitle">Configure destinations like Telegram to receive task results.</p>
+
+  <div id="loading"><div class="spinner"></div> Loading outputs…</div>
+  <div id="output-list"></div>
+
+  <div class="section-title">Create New Output</div>
+  <div class="glass-card">
+    <form id="create-form">
+      <div class="form-grid">
+        <div>
+          <label for="f-name">Name</label>
+          <input type="text" id="f-name" placeholder="My Telegram Bot" required>
+        </div>
+        <div>
+          <label for="f-type">Type</label>
+          <select id="f-type" onchange="updateFormFields()" required>
+            <option value="telegram">Telegram</option>
+          </select>
+        </div>
+        
+        <!-- Telegram specific fields -->
+        <div id="fields-telegram" class="form-full form-grid">
+          <div>
+            <label for="f-tg-token">Bot Token</label>
+            <input type="password" id="f-tg-token" placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ">
+            <div class="hint">Get this from @BotFather</div>
+          </div>
+          <div>
+            <label for="f-tg-chatid">Chat ID</label>
+            <input type="text" id="f-tg-chatid" placeholder="-1001234567890">
+            <div class="hint">The ID of the chat/channel to send messages to</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:1.25rem; display:flex; gap:0.75rem; align-items:center;">
+        <button type="submit" class="btn-primary" id="create-btn">➕ Create Output</button>
+        <span id="create-msg" style="font-size:0.85rem;"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const API = '';
+
+  function updateFormFields() {
+    const type = document.getElementById('f-type').value;
+    document.getElementById('fields-telegram').style.display = (type === 'telegram') ? 'grid' : 'none';
+  }
+
+  async function loadOutputs() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('output-list').innerHTML = '';
+    try {
+      const outputs = await fetch(API + '/outputs').then(r => r.json());
+      document.getElementById('loading').style.display = 'none';
+
+      if (!outputs.length) {
+        document.getElementById('output-list').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><p>No outputs configured.</p></div>';
+        return;
+      }
+
+      outputs.forEach(o => renderOutputCard(o));
+    } catch (err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('output-list').innerHTML =
+        '<p style="color:var(--danger)">Failed to load outputs.</p>';
+    }
+  }
+
+  function renderOutputCard(o) {
+    const configStr = Object.entries(o.config || {})
+      .map(([k, v]) => `<span>${esc(k)}: <code>${k.includes('token') || k.includes('secret') ? '********' : esc(v)}</code></span>`)
+      .join(' &nbsp;·&nbsp; ');
+
+    const card = document.createElement('div');
+    card.className = 'glass-card';
+    card.id = 'card-' + o.id;
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <span>📢</span> ${esc(o.name)}
+            <span class="badge badge-enabled">${esc(o.type)}</span>
+          </div>
+          <div class="card-meta">
+            ${configStr}
+          </div>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn-success" onclick="testOutput('${o.id}', this)">🧪 Test Output</button>
+        <button class="btn-danger" onclick="deleteOutput('${o.id}', '${esc(o.name)}', this)">🗑 Delete</button>
+      </div>
+      <div id="test-result-${o.id}" style="margin-top:0.75rem; font-size:0.85rem;"></div>
+    `;
+    document.getElementById('output-list').appendChild(card);
+  }
+
+  async function testOutput(oid, btn) {
+    btn.disabled = true;
+    const oldText = btn.innerHTML;
+    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> Testing…';
+    const resDiv = document.getElementById('test-result-' + oid);
+    resDiv.textContent = '';
+    
+    try {
+      const res = await fetch(API + '/outputs/' + oid + '/test', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        resDiv.style.color = 'var(--success)';
+        resDiv.textContent = '✅ ' + data.message;
+      } else {
+        resDiv.style.color = 'var(--danger)';
+        resDiv.textContent = '❌ ' + (data.detail || 'Test failed');
+      }
+    } catch (err) {
+      resDiv.style.color = 'var(--danger)';
+      resDiv.textContent = '❌ Network error';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = oldText;
+      setTimeout(() => { if(resDiv.textContent.startsWith('✅')) resDiv.textContent = ''; }, 5000);
+    }
+  }
+
+  async function deleteOutput(oid, name, btn) {
+    if (!confirm('Delete output "' + name + '"?')) return;
+    btn.disabled = true;
+    try {
+      await fetch(API + '/outputs/' + oid, { method: 'DELETE' });
+      document.getElementById('card-' + oid)?.remove();
+      if (!document.querySelectorAll('.glass-card').length) loadOutputs();
+    } catch {
+      btn.disabled = false;
+      alert('Failed to delete output.');
+    }
+  }
+
+  document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('create-btn');
+    const msg = document.getElementById('create-msg');
+    const name  = document.getElementById('f-name').value.trim();
+    const type  = document.getElementById('f-type').value;
+    
+    let config = {};
+    if (type === 'telegram') {
+      config.token = document.getElementById('f-tg-token').value.trim();
+      config.chat_id = document.getElementById('f-tg-chatid').value.trim();
+      if (!config.token || !config.chat_id) {
+        alert("Please provide both token and chat id for telegram");
+        return;
+      }
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Creating…';
+    msg.style.color = '';
+    msg.textContent = '';
+
+    try {
+      const res = await fetch(API + '/outputs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type, config }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.style.color = 'var(--success)';
+        msg.textContent = '✅ Output created!';
+        document.getElementById('create-form').reset();
+        updateFormFields();
+        loadOutputs();
+      } else {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = data.detail || 'Failed to create output.';
+      }
+    } catch {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'Network error.';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '➕ Create Output';
+    }
+  });
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  updateFormFields();
+  loadOutputs();
+</script>
+</body>
+</html>

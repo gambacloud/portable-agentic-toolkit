@@ -74,6 +74,7 @@
             '<a href="' + base + '/health"        target="_blank"><span>💚</span> Health</a>' +
             '<a href="' + base + '/conversations" target="_blank"><span>💬</span> Conversations</a>' +
             '<a href="' + base + '/mcp-ui"        target="_blank"><span>🔌</span> Manage MCPs</a>' +
+            '<a href="' + base + '/outputs-ui"    target="_blank"><span>📢</span> Outputs</a>' +
             '<a href="' + base + '/schedules-ui" target="_blank"><span>📅</span> Schedules</a>' +
 
             '<div class="pat-section-title pat-section-sep">Ollama</div>' +

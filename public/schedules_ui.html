@@ -231,6 +231,12 @@
           <input type="text" id="f-mcps" placeholder="gmail, calendar">
           <div class="hint">Leave blank for all enabled servers</div>
         </div>
+        <div class="form-full">
+          <label>Active Outputs</label>
+          <div id="f-outputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem;">
+            <div class="hint">Loading outputs...</div>
+          </div>
+        </div>
       </div>
       <div style="margin-top:1.25rem; display:flex; gap:0.75rem; align-items:center;">
         <button type="submit" class="btn-primary" id="create-btn">➕ Create Schedule</button>
@@ -243,15 +249,21 @@
 <script>
   const API = '';
 
+  let availableOutputs = [];
+
   async function loadSchedules() {
     document.getElementById('loading').style.display = 'block';
     document.getElementById('schedule-list').innerHTML = '';
     try {
-      const [scheds, runs] = await Promise.all([
+      const [scheds, runs, outputs] = await Promise.all([
         fetch(API + '/schedules').then(r => r.json()),
         fetch(API + '/schedule-runs?limit=100').then(r => r.json()),
+        fetch(API + '/outputs').then(r => r.json()),
       ]);
       document.getElementById('loading').style.display = 'none';
+
+      availableOutputs = outputs;
+      renderOutputCheckboxes(outputs);
 
       if (!scheds.length) {
         document.getElementById('schedule-list').innerHTML =
@@ -281,6 +293,11 @@
 
     const lastRun = s.last_run ? new Date(s.last_run + 'Z').toLocaleString() : 'Never';
     const mcps = (s.active_mcps && s.active_mcps.length) ? s.active_mcps.join(', ') : 'all';
+    const outputs = (s.active_outputs && s.active_outputs.length) ? 
+        s.active_outputs.map(oid => {
+            const out = availableOutputs.find(o => o.id === oid);
+            return out ? out.name : oid;
+        }).join(', ') : 'none';
 
     const card = document.createElement('div');
     card.className = 'glass-card';
@@ -295,6 +312,7 @@
             <span>Cron: <code>${esc(s.cron)}</code></span> &nbsp;·&nbsp;
             <span>Model: <code>${esc(s.model)}</code></span> &nbsp;·&nbsp;
             <span>MCPs: <code>${esc(mcps)}</code></span> &nbsp;·&nbsp;
+            <span>Outputs: <code>${esc(outputs)}</code></span> &nbsp;·&nbsp;
             <span>Last run: ${lastRun}</span>
           </div>
         </div>
@@ -390,6 +408,8 @@
     const model = document.getElementById('f-model').value.trim() || 'llama3.2';
     const mcpsRaw = document.getElementById('f-mcps').value.trim();
     const active_mcps = mcpsRaw ? mcpsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    
+    const active_outputs = Array.from(document.querySelectorAll('input[name="f-out-chk"]:checked')).map(cb => cb.value);
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Creating…';
@@ -400,7 +420,7 @@
       const res = await fetch(API + '/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, cron, task, model, active_mcps }),
+        body: JSON.stringify({ name, cron, task, model, active_mcps, active_outputs }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -423,6 +443,20 @@
 
   function esc(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderOutputCheckboxes(outputs) {
+    const container = document.getElementById('f-outputs');
+    if (!outputs.length) {
+      container.innerHTML = '<div class="hint">No outputs configured. Add some in the Outputs tab!</div>';
+      return;
+    }
+    container.innerHTML = outputs.map(o => `
+      <label style="display:flex; align-items:center; gap:0.3rem; text-transform:none; font-weight:normal; font-size:0.85rem;">
+        <input type="checkbox" name="f-out-chk" value="${o.id}">
+        <span>${esc(o.name)}</span> <span class="badge badge-enabled" style="font-size:0.6rem; padding:0.1rem 0.3rem; margin-left:0.3rem;">${esc(o.type)}</span>
+      </label>
+    `).join('');
   }
 
   loadSchedules();

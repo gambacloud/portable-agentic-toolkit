@@ -87,11 +87,57 @@ class SchedulerEngine:
             q.record_schedule_run(sid, result)
             q.create_schedule_run(sid, schedule["name"], result)
             log.info("Scheduled task '%s' done — result_len=%d", schedule["name"], len(result))
+
+            # Dispatch to outputs
+            active_outputs = schedule.get("active_outputs", [])
+            for oid in active_outputs:
+                output = q.get_output(oid)
+                if output:
+                    success, msg = send_to_output(output, f"✅ Scheduled task '{schedule['name']}' completed:\n\n{result}")
+                    if not success:
+                        log.error("Failed to send output '%s': %s", output['name'], msg)
+
         except Exception as exc:
             error_msg = f"Error: {exc}"
             q.record_schedule_run(sid, error_msg)
             q.create_schedule_run(sid, schedule["name"], error_msg)
             log.error("Scheduled task '%s' failed: %s", schedule["name"], exc, exc_info=True)
+
+            # Dispatch to outputs
+            active_outputs = schedule.get("active_outputs", [])
+            for oid in active_outputs:
+                output = q.get_output(oid)
+                if output:
+                    send_to_output(output, f"❌ Scheduled task '{schedule['name']}' failed:\n\n{exc}")
+
+
+def send_to_output(output: dict, message: str) -> tuple[bool, str]:
+    import urllib.request
+    import json
+    
+    otype = output.get("type")
+    config = output.get("config", {})
+    
+    if otype == "telegram":
+        token = config.get("token")
+        chat_id = config.get("chat_id")
+        if not token or not chat_id:
+            return False, "Missing token or chat_id"
+        
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req) as resp:
+                if resp.status == 200:
+                    return True, "OK"
+                else:
+                    return False, f"HTTP {resp.status}"
+        except Exception as e:
+            return False, str(e)
+            
+    # other types later
+    return False, f"Unsupported output type: {otype}"
 
 
 def _run_task(task: str, model: str, active_mcps: Optional[list]) -> str:

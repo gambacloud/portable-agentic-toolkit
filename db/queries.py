@@ -181,13 +181,14 @@ def delete_profile(profile_id: str) -> bool:
 # ── Scheduled Tasks ───────────────────────────────────────────────────────────
 
 
-def create_schedule(name: str, task: str, cron: str, model: str, active_mcps: list) -> dict:
+def create_schedule(name: str, task: str, cron: str, model: str, active_mcps: list, active_outputs: list = None) -> dict:
+    if active_outputs is None: active_outputs = []
     sid = str(uuid.uuid4())
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO scheduled_tasks (id, name, task, cron, model, active_mcps) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sid, name, task, cron, model, json.dumps(active_mcps)),
+            "INSERT INTO scheduled_tasks (id, name, task, cron, model, active_mcps, active_outputs) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sid, name, task, cron, model, json.dumps(active_mcps), json.dumps(active_outputs)),
         )
     return get_schedule(sid)
 
@@ -201,6 +202,7 @@ def list_schedules() -> list[dict]:
     for r in rows:
         d = dict(r)
         d["active_mcps"] = json.loads(d["active_mcps"])
+        d["active_outputs"] = json.loads(d.get("active_outputs", "[]"))
         result.append(d)
     return result
 
@@ -214,16 +216,19 @@ def get_schedule(sid: str) -> dict | None:
         return None
     d = dict(row)
     d["active_mcps"] = json.loads(d["active_mcps"])
+    d["active_outputs"] = json.loads(d.get("active_outputs", "[]"))
     return d
 
 
 def update_schedule(sid: str, **kwargs) -> dict | None:
-    allowed = {"name", "task", "cron", "model", "active_mcps", "enabled"}
+    allowed = {"name", "task", "cron", "model", "active_mcps", "active_outputs", "enabled"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return get_schedule(sid)
     if "active_mcps" in fields:
         fields["active_mcps"] = json.dumps(fields["active_mcps"])
+    if "active_outputs" in fields:
+        fields["active_outputs"] = json.dumps(fields["active_outputs"])
     with get_conn() as conn:
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         conn.execute(
@@ -244,6 +249,59 @@ def record_schedule_run(sid: str, result: str) -> None:
 def delete_schedule(sid: str) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?", (sid,))
+    return cur.rowcount > 0
+
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+
+
+def list_outputs() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM outputs ORDER BY created_at DESC").fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["config"] = json.loads(d["config"])
+        result.append(d)
+    return result
+
+
+def get_output(output_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM outputs WHERE id = ?", (output_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["config"] = json.loads(d["config"])
+    return d
+
+
+def create_output(name: str, type: str, config: dict) -> dict:
+    oid = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO outputs (id, name, type, config) VALUES (?, ?, ?, ?)",
+            (oid, name, type, json.dumps(config)),
+        )
+    return get_output(oid)
+
+
+def update_output(output_id: str, **kwargs) -> dict | None:
+    allowed = {"name", "type", "config"}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return get_output(output_id)
+    if "config" in fields:
+        fields["config"] = json.dumps(fields["config"])
+    with get_conn() as conn:
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        conn.execute(f"UPDATE outputs SET {set_clause} WHERE id = ?", [*fields.values(), output_id])
+    return get_output(output_id)
+
+
+def delete_output(output_id: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM outputs WHERE id = ?", (output_id,))
     return cur.rowcount > 0
 
 

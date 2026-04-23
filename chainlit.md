@@ -36,6 +36,13 @@ Drop a server config into `bin/mcp_servers/<name>/config.json`:
 | Storage | 10 GB (for models) |
 | Ollama | Running locally |
 
+## Using Groq Models (Cloud)
+
+If you'd like to use ultra-fast cloud models via Groq instead of running them locally:
+1. Open the `.env` file in the project root.
+2. Add your Groq API key: `GROQ_API_KEY=gsk_...`
+3. Restart the app. The Groq models will now appear in the model selection dropdown!
+
 ## Key files
 
 | Path | Purpose |

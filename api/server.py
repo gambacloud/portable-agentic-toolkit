@@ -191,6 +191,7 @@ class ScheduleCreate(BaseModel):
     cron: str
     model: str = "groq/llama-3.3-70b-versatile"
     active_mcps: list[str] = []
+    active_outputs: list[str] = []
 
 
 class ScheduleUpdate(BaseModel):
@@ -199,6 +200,7 @@ class ScheduleUpdate(BaseModel):
     cron: str | None = None
     model: str | None = None
     active_mcps: list[str] | None = None
+    active_outputs: list[str] | None = None
     enabled: bool | None = None
 
 
@@ -214,7 +216,7 @@ def create_schedule(body: ScheduleCreate):
         CronTrigger.from_crontab(body.cron)
     except Exception:
         raise HTTPException(400, f"Invalid cron expression: '{body.cron}'")
-    schedule = q.create_schedule(body.name, body.task, body.cron, body.model, body.active_mcps)
+    schedule = q.create_schedule(body.name, body.task, body.cron, body.model, body.active_mcps, body.active_outputs)
     from scheduler.engine import get_engine
     get_engine().add_or_replace(schedule)
     return schedule
@@ -249,6 +251,58 @@ def run_schedule_now(sid: str):
         name=f"schedule-{sid[:8]}",
     ).start()
     return {"ok": True, "message": "Task started in background"}
+
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+
+
+class OutputCreate(BaseModel):
+    name: str
+    type: str
+    config: dict
+
+
+class OutputUpdate(BaseModel):
+    name: str | None = None
+    type: str | None = None
+    config: dict | None = None
+
+
+@api.get("/outputs", tags=["outputs"])
+def list_outputs():
+    return q.list_outputs()
+
+
+@api.post("/outputs", status_code=201, tags=["outputs"])
+def create_output(body: OutputCreate):
+    return q.create_output(body.name, body.type, body.config)
+
+
+@api.patch("/outputs/{oid}", tags=["outputs"])
+def update_output(oid: str, body: OutputUpdate):
+    if not q.get_output(oid):
+        raise HTTPException(404, "Output not found")
+    updated = q.update_output(oid, **body.model_dump(exclude_none=True))
+    return updated
+
+
+@api.delete("/outputs/{oid}", status_code=204, tags=["outputs"])
+def delete_output(oid: str):
+    if not q.delete_output(oid):
+        raise HTTPException(404, "Output not found")
+
+
+@api.post("/outputs/{oid}/test", tags=["outputs"])
+def test_output(oid: str):
+    output = q.get_output(oid)
+    if not output:
+        raise HTTPException(404, "Output not found")
+    
+    from scheduler.engine import send_to_output
+    success, msg = send_to_output(output, "This is a test message from Portable Agentic Toolkit!")
+    if not success:
+        raise HTTPException(400, f"Test failed: {msg}")
+    return {"ok": True, "message": "Test successful"}
 
 
 # ── MCP Management ────────────────────────────────────────────────────────────
@@ -315,6 +369,14 @@ def mcp_ui():
 @api.get("/schedules-ui", response_class=HTMLResponse, tags=["ui"])
 def schedules_ui():
     html_path = Path(__file__).parent.parent / "public" / "schedules_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
+@api.get("/outputs-ui", response_class=HTMLResponse, tags=["ui"])
+def outputs_ui():
+    html_path = Path(__file__).parent.parent / "public" / "outputs_ui.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "UI File Not Found"

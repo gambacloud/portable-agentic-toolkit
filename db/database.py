@@ -43,10 +43,19 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     cron        TEXT NOT NULL,
     model       TEXT NOT NULL,
     active_mcps TEXT NOT NULL DEFAULT '[]',
+    active_outputs TEXT NOT NULL DEFAULT '[]',
     enabled     INTEGER NOT NULL DEFAULT 1,
     last_run    TEXT,
     last_result TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS outputs (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    type       TEXT NOT NULL,
+    config     TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS schedule_runs (
@@ -94,6 +103,21 @@ def init_db() -> None:
                     ran_at        TEXT NOT NULL DEFAULT (datetime('now')),
                     result        TEXT,
                     notified      INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+        # Migration: add active_outputs to scheduled_tasks if missing
+        st_cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_tasks)").fetchall()]
+        if "active_outputs" not in st_cols:
+            conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN active_outputs TEXT NOT NULL DEFAULT '[]'")
+        # Migration: create outputs if missing
+        if "outputs" not in tables:
+            conn.execute("""
+                CREATE TABLE outputs (
+                    id         TEXT PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    type       TEXT NOT NULL,
+                    config     TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
                 )
             """)
 
