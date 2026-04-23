@@ -1,24 +1,25 @@
 """
-Direct Ollama agent runner — replaces CrewAI for fast, reliable tool-calling.
-
-Exposes the same build_crew / build_hierarchical_crew interface as crew.py
-so app.py needs minimal changes.
+Direct Ollama agent runner for fast, reliable tool-calling.
 """
 from __future__ import annotations
 
 import json
 import re
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 import ollama
+import yaml
 
 from utils.logger import get_logger
 
 log = get_logger(__name__)
 
+_CONFIG_PATH = Path(__file__).parent.parent / "config" / "agents.yaml"
 
-# ── Public API (same interface as crew.py) ────────────────────────────────────
+
+# ── Public API ───────────────────────────────────────────────────────────────
 
 
 def build_crew(
@@ -28,8 +29,6 @@ def build_crew(
     on_step: Optional[Callable] = None,
     profile_id: Optional[str] = None,
 ) -> "_Runner":
-    from agents.crew import _agent_config, _load_company_dna
-
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
     backstory = f"{dna}\n\n{cfg['backstory']}" if dna else cfg["backstory"]
@@ -54,8 +53,6 @@ def build_hierarchical_crew(
     on_step: Optional[Callable] = None,
     profile_id: Optional[str] = None,
 ) -> "_Runner":
-    from agents.crew import _agent_config, _load_company_dna, _load_crew_agent_configs
-
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
     crew_cfgs = _load_crew_agent_configs()
@@ -319,7 +316,6 @@ class _Runner:
                 context_parts = list(executor.map(_run_worker, self._agents))
 
         # Manager synthesizes all worker outputs
-        from agents.crew import _load_company_dna
         dna = _load_company_dna()
         mcfg = self._manager_cfg
 
@@ -343,6 +339,103 @@ class _Runner:
             "Synthesize a final, clear, and complete answer."
         )
         return manager.run(synthesis_prompt)
+
+
+def _load_company_dna() -> str:
+    if not _CONFIG_PATH.exists():
+        return ""
+    try:
+        with open(_CONFIG_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        dna = data.get("company_dna", "").strip()
+        if dna:
+            log.debug("Company DNA loaded (%d chars)", len(dna))
+        return dna
+    except Exception as exc:
+        log.warning("Failed to load company_dna: %s", exc)
+        return ""
+
+
+def _load_crew_agent_configs() -> list[dict]:
+    if not _CONFIG_PATH.exists():
+        return []
+    try:
+        with open(_CONFIG_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        return [
+            {
+                "role": c.get("role", "Specialist"),
+                "goal": c.get("goal", ""),
+                "backstory": c.get("backstory", ""),
+            }
+            for c in data.get("crew_agents", [])
+        ]
+    except Exception as exc:
+        log.warning("Failed to load crew_agents: %s", exc)
+        return []
+
+
+def _agent_config(profile_id: Optional[str] = None) -> dict:
+    defaults = {
+        "role": "General Purpose AI Assistant",
+        "goal": (
+            "Help the user accomplish their tasks efficiently and accurately, "
+            "using available tools when appropriate."
+        ),
+        "backstory": (
+            "You are a thoughtful AI assistant running entirely on the user's local machine. "
+            "You have access to various tools via the Model Context Protocol (MCP). "
+            "You reason step by step, use tools when they help, and always ask for "
+            "confirmation before taking irreversible actions."
+        ),
+    }
+
+    if profile_id:
+        try:
+            from db.queries import get_profile
+            profile = get_profile(profile_id)
+            if profile:
+                log.debug("Using selected profile: %s", profile.get("name"))
+                return {
+                    "role": profile.get("role") or defaults["role"],
+                    "goal": profile.get("goal") or defaults["goal"],
+                    "backstory": profile.get("backstory") or defaults["backstory"],
+                }
+        except Exception as exc:
+            log.debug("Selected profile lookup failed: %s", exc)
+
+    try:
+        from db.queries import get_default_profile
+        profile = get_default_profile()
+        if profile:
+            log.debug("Using system profile from DB: %s", profile.get("name"))
+            return {
+                "role": profile.get("role") or defaults["role"],
+                "goal": profile.get("goal") or defaults["goal"],
+                "backstory": profile.get("backstory") or defaults["backstory"],
+            }
+    except Exception as exc:
+        log.debug("DB profile lookup skipped: %s", exc)
+
+    if not _CONFIG_PATH.exists():
+        log.debug("No agents.yaml found — using defaults")
+        return defaults
+
+    try:
+        with open(_CONFIG_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        agents = data.get("agents", [])
+        if agents:
+            cfg = agents[0]
+            return {
+                "role": cfg.get("role", defaults["role"]),
+                "goal": cfg.get("goal", defaults["goal"]),
+                "backstory": cfg.get("backstory", defaults["backstory"]),
+            }
+    except Exception as exc:
+        log.warning("Failed to load agents.yaml (%s) — using defaults", exc)
+
+    return defaults
 
 
 def _parse_tool_args(raw_args) -> dict | str:

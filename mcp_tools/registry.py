@@ -1,11 +1,10 @@
 """
-MCP Tool Registry — auto-discovers MCP servers from bin/mcp_servers/
-and wraps their tools as CrewAI BaseTool instances.
+MCP Tool Registry — auto-discovers MCP servers from bin/mcp_servers/.
 
 Discovery flow:
   1. Scan bin/mcp_servers/*/config.json at startup (async).
   2. Connect to each server via stdio, call list_tools(), cache results, KEEP ALIVE.
-  3. On crew build, wrap each tool as a CrewAI BaseTool.
+  3. On runner build, expose tools as (tool_defs, tool_map) for direct Ollama calls.
   4. On tool execution (sync, inside a thread), dispatch to main loop via run_coroutine_threadsafe.
   5. If requires_confirmation=true, gate execution behind HITL ask_user_fn.
 """
@@ -17,9 +16,6 @@ import time
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Callable, Optional
-
-from crewai.tools import BaseTool
-from pydantic import Field
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -135,24 +131,6 @@ class MCPRegistry:
     def tool_count(self) -> int:
         return sum(len(s["tools"]) for s in self._servers.values())
 
-    def get_crewai_tools(self, ask_user_fn: Optional[Callable] = None) -> list[BaseTool]:
-        tools: list[BaseTool] = []
-        for server_name, server_data in self._servers.items():
-            config = server_data["config"]
-            needs_confirm = config.get("requires_confirmation", False)
-            for tool_def in server_data["tools"]:
-                tools.append(
-                    _make_mcp_tool(
-                        self,
-                        server_name=server_name,
-                        tool_def=tool_def,
-                        requires_confirmation=needs_confirm,
-                        ask_user_fn=ask_user_fn,
-                    )
-                )
-        log.debug("Returning %d CrewAI tool wrapper(s)", len(tools))
-        return tools
-
     def server_names(self) -> list[str]:
         return list(self._servers.keys())
 
@@ -196,76 +174,6 @@ class MCPRegistry:
             for t in srv_data["tools"]:
                 lines.append(f"  [{srv_name}] {t['name']}: {t['description']}")
         return "\n".join(lines)
-
-
-# ── MCP tool factory ─────────────────────────────────────────────────────────
-
-
-def _make_mcp_tool(
-    registry: MCPRegistry,
-    server_name: str,
-    tool_def: dict,
-    requires_confirmation: bool,
-    ask_user_fn: Optional[Callable],
-) -> BaseTool:
-    safe_name = f"{server_name}__{tool_def['name']}".replace("-", "_")
-    description = (
-        f"[MCP:{server_name}] {tool_def.get('description', tool_def['name'])}. "
-        "Input: a JSON object with the tool arguments."
-    )
-    _registry = registry
-    _server_name = server_name
-    _tool_name = tool_def["name"]
-    _requires_confirm = requires_confirmation
-    _ask_user = ask_user_fn
-    _log = get_logger(f"mcp.{server_name}.{_tool_name}")
-
-    class _MCPTool(BaseTool):
-        name: str = Field(default=safe_name)
-        description: str = Field(default=description)
-
-        def _run(self, tool_input: str = "") -> str:
-            args: dict = {}
-            stripped = (tool_input or "").strip()
-            if stripped.startswith("{"):
-                try:
-                    args = json.loads(stripped)
-                except json.JSONDecodeError as exc:
-                    _log.warning("Could not parse tool input as JSON (%s) — using {}", exc)
-
-            _log.info("Tool call — server=%s tool=%s args=%s", _server_name, _tool_name, args)
-
-            if _requires_confirm and _ask_user:
-                preview = json.dumps(args, indent=2, ensure_ascii=False)
-                decision = _ask_user(
-                    f"**Tool `{_tool_name}` wants to run** with:\n```json\n{preview}\n```\nAllow?",
-                    ["Allow", "Deny"],
-                )
-                if decision != "Allow":
-                    _log.warning("Tool '%s' denied by user", _tool_name)
-                    return "Action denied by user."
-                _log.info("Tool '%s' allowed by user", _tool_name)
-
-            t_start = time.perf_counter()
-            try:
-                result = _registry.call_tool_sync(_server_name, _tool_name, args)
-                elapsed = time.perf_counter() - t_start
-                _log.info(
-                    "Tool '%s' completed in %.2fs — output_len=%d",
-                    _tool_name, elapsed, len(result),
-                )
-                _log.debug("Tool output: %s", result[:300])
-                return result
-            except Exception as exc:
-                elapsed = time.perf_counter() - t_start
-                _log.error(
-                    "Tool '%s' failed after %.2fs — %s",
-                    _tool_name, elapsed, exc, exc_info=True,
-                )
-                return f"Tool error: {exc}"
-
-    _MCPTool.__name__ = safe_name
-    return _MCPTool()
 
 
 def _make_runner_callable(registry: MCPRegistry, server_name: str, tool_name: str, needs_confirm: bool, ask_user_fn: Optional[Callable], logger):

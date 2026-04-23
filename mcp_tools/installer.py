@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from crewai.tools import BaseTool
 
 from utils.logger import get_logger
 
@@ -14,31 +13,6 @@ log = get_logger(__name__)
 
 _CATALOG_PATH = Path(__file__).parent.parent / "config" / "mcp_catalog.yaml"
 _SERVERS_DIR = Path(__file__).parent.parent / "bin" / "mcp_servers"
-
-
-def make_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> BaseTool:
-    catalog = _load_catalog()
-    available = ", ".join(catalog) if catalog else "none"
-    _blocked = [False]  # flipped on first cancel; shared across all calls this turn
-
-    class _InstallerTool(BaseTool):
-        name: str = "install_mcp_server"
-        description: str = (
-            "Install a new MCP server so you can connect to an external service. "
-            "Use this when the user asks you to do something you have no tool for. "
-            f"Input: server name as a plain string. Known servers: {available}."
-        )
-        cache_function = lambda self, *args, **kwargs: False  # noqa: E731
-
-        def _run(self, server_name: str) -> str:
-            if _blocked[0]:
-                return "Installation was already declined this turn. Give your final answer now."
-            result = _install(server_name.strip().lower(), catalog, ask_user_fn)
-            if "declined" in result:
-                _blocked[0] = True
-            return result
-
-    return _InstallerTool()
 
 
 def make_runner_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> tuple[dict, Callable]:
