@@ -85,10 +85,12 @@ class SchedulerEngine:
                 active_mcps=schedule["active_mcps"] or None,
             )
             q.record_schedule_run(sid, result)
+            q.create_schedule_run(sid, schedule["name"], result)
             log.info("Scheduled task '%s' done — result_len=%d", schedule["name"], len(result))
         except Exception as exc:
             error_msg = f"Error: {exc}"
             q.record_schedule_run(sid, error_msg)
+            q.create_schedule_run(sid, schedule["name"], error_msg)
             log.error("Scheduled task '%s' failed: %s", schedule["name"], exc, exc_info=True)
 
 

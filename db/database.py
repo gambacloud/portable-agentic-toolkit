@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     last_result TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS schedule_runs (
+    id            TEXT PRIMARY KEY,
+    schedule_id   TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    schedule_name TEXT NOT NULL,
+    ran_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    result        TEXT,
+    notified      INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -68,13 +77,25 @@ def init_db() -> None:
         if "short_id" not in cols:
             conn.execute("ALTER TABLE conversations ADD COLUMN short_id TEXT")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_short_id ON conversations(short_id)")
-            # Backfill existing rows
             rows = conn.execute("SELECT id FROM conversations WHERE short_id IS NULL").fetchall()
             for row in rows:
                 conn.execute(
                     "UPDATE conversations SET short_id = ? WHERE id = ?",
                     (_gen_short_id(), row[0]),
                 )
+        # Migration: create schedule_runs if missing
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "schedule_runs" not in tables:
+            conn.execute("""
+                CREATE TABLE schedule_runs (
+                    id            TEXT PRIMARY KEY,
+                    schedule_id   TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+                    schedule_name TEXT NOT NULL,
+                    ran_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                    result        TEXT,
+                    notified      INTEGER NOT NULL DEFAULT 0
+                )
+            """)
 
 
 def _gen_short_id(length: int = 8) -> str:

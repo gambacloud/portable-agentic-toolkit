@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scheduled Tasks</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --success: #10b981;
+    --warning: #f59e0b;
+  }
+  body {
+    background: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                      radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  p.subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .card-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-enabled  { background: rgba(16,185,129,0.2); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-disabled { background: rgba(148,163,184,0.1); color: var(--text-muted); border: 1px solid rgba(148,163,184,0.2); }
+  .card-meta {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.7;
+  }
+  .card-meta code {
+    background: rgba(0,0,0,0.3);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+  }
+  .card-task {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: rgba(248,250,252,0.75);
+    border-left: 2px solid rgba(99,179,237,0.4);
+    padding-left: 0.75rem;
+  }
+  .card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }
+  .last-result {
+    margin-top: 0.75rem;
+    background: rgba(0,0,0,0.25);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
+  }
+  .last-result.visible { display: block; }
+  button {
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent); color: white; }
+  .btn-primary:hover:not(:disabled)  { background: var(--accent-hover); }
+  .btn-danger   { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover:not(:disabled)   { background: rgba(239,68,68,0.25); }
+  .btn-ghost    { background: rgba(255,255,255,0.06); color: var(--text-main); border: 1px solid rgba(255,255,255,0.1); }
+  .btn-ghost:hover:not(:disabled)    { background: rgba(255,255,255,0.1); }
+  .btn-warn     { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+  .btn-warn:hover:not(:disabled)     { background: rgba(245,158,11,0.25); }
+
+  /* Toggle */
+  .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.1); transition: .3s; border-radius: 34px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .slider:before {
+    position: absolute; content: ""; height: 16px; width: 16px;
+    left: 4px; bottom: 3px; background: var(--text-muted); transition: .3s; border-radius: 50%;
+  }
+  input:checked + .slider { background: var(--success); border-color: var(--success); }
+  input:checked + .slider:before { transform: translateX(18px); background: white; }
+
+  /* Create form */
+  .section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    color: var(--text-main);
+  }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-full  { grid-column: 1 / -1; }
+  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  input[type="text"], textarea {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+    color: white; padding: 0.65rem 0.9rem; border-radius: 8px;
+    font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+    font-family: inherit;
+  }
+  input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+  #loading { display: none; text-align: center; padding: 3rem; color: var(--text-muted); }
+  .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 3px solid rgba(255,255,255,0.3); border-radius: 50%;
+    border-top-color: white; animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+  /* Run history panel */
+  .history-panel {
+    margin-top: 0.75rem;
+    display: none;
+  }
+  .history-panel.visible { display: block; }
+  .history-entry {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    border-left: 2px solid rgba(255,255,255,0.08);
+    padding: 0.4rem 0.75rem;
+    margin-bottom: 0.4rem;
+  }
+  .history-entry .ran-at { font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 0.2rem; }
+  .history-entry .result-text { white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📅 Scheduled Tasks</h1>
+  <p class="subtitle">Tasks that run automatically on a schedule and notify you in chat when done.</p>
+
+  <div id="loading"><div class="spinner"></div> Loading schedules…</div>
+  <div id="schedule-list"></div>
+
+  <div class="section-title">Create New Schedule</div>
+  <div class="glass-card">
+    <form id="create-form">
+      <div class="form-grid">
+        <div>
+          <label for="f-name">Name</label>
+          <input type="text" id="f-name" placeholder="Daily email summary" required>
+        </div>
+        <div>
+          <label for="f-cron">Cron Expression (UTC)</label>
+          <input type="text" id="f-cron" placeholder="0 9 * * *" required>
+          <div class="hint">minute hour day month weekday · e.g. <code>0 9 * * 1-5</code> = weekdays 9am</div>
+        </div>
+        <div class="form-full">
+          <label for="f-task">Task Description</label>
+          <textarea id="f-task" placeholder="Summarise unread emails and list the top 3 action items." required></textarea>
+        </div>
+        <div>
+          <label for="f-model">Model</label>
+          <input type="text" id="f-model" placeholder="llama3.2">
+          <div class="hint">Leave blank to use the default model</div>
+        </div>
+        <div>
+          <label for="f-mcps">Active MCPs (comma-separated)</label>
+          <input type="text" id="f-mcps" placeholder="gmail, calendar">
+          <div class="hint">Leave blank for all enabled servers</div>
+        </div>
+      </div>
+      <div style="margin-top:1.25rem; display:flex; gap:0.75rem; align-items:center;">
+        <button type="submit" class="btn-primary" id="create-btn">➕ Create Schedule</button>
+        <span id="create-msg" style="font-size:0.85rem;"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const API = '';
+
+  async function loadSchedules() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('schedule-list').innerHTML = '';
+    try {
+      const [scheds, runs] = await Promise.all([
+        fetch(API + '/schedules').then(r => r.json()),
+        fetch(API + '/schedule-runs?limit=100').then(r => r.json()),
+      ]);
+      document.getElementById('loading').style.display = 'none';
+
+      if (!scheds.length) {
+        document.getElementById('schedule-list').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><p>No scheduled tasks yet.<br>Create one below or ask the agent in chat.</p></div>';
+        return;
+      }
+
+      // Group runs by schedule_id
+      const runsBySchedule = {};
+      runs.forEach(r => {
+        if (!runsBySchedule[r.schedule_id]) runsBySchedule[r.schedule_id] = [];
+        runsBySchedule[r.schedule_id].push(r);
+      });
+
+      scheds.forEach(s => renderScheduleCard(s, runsBySchedule[s.id] || []));
+    } catch (err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('schedule-list').innerHTML =
+        '<p style="color:var(--danger)">Failed to load schedules.</p>';
+    }
+  }
+
+  function renderScheduleCard(s, runs) {
+    const badge = s.enabled
+      ? '<span class="badge badge-enabled">● enabled</span>'
+      : '<span class="badge badge-disabled">⏸ paused</span>';
+
+    const lastRun = s.last_run ? new Date(s.last_run + 'Z').toLocaleString() : 'Never';
+    const mcps = (s.active_mcps && s.active_mcps.length) ? s.active_mcps.join(', ') : 'all';
+
+    const card = document.createElement('div');
+    card.className = 'glass-card';
+    card.id = 'card-' + s.id;
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <span>📅</span> ${esc(s.name)} ${badge}
+          </div>
+          <div class="card-meta" style="margin-top:0.4rem;">
+            <span>Cron: <code>${esc(s.cron)}</code></span> &nbsp;·&nbsp;
+            <span>Model: <code>${esc(s.model)}</code></span> &nbsp;·&nbsp;
+            <span>MCPs: <code>${esc(mcps)}</code></span> &nbsp;·&nbsp;
+            <span>Last run: ${lastRun}</span>
+          </div>
+        </div>
+        <label class="switch" title="${s.enabled ? 'Pause' : 'Enable'}">
+          <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSchedule('${s.id}', this.checked, this)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="card-task">${esc(s.task)}</div>
+      ${s.last_result ? `
+        <div class="card-actions" style="margin-top:0.5rem; margin-bottom:0;">
+          <button class="btn-ghost" style="font-size:0.75rem; padding:0.3rem 0.7rem;" onclick="toggleResult('${s.id}')">▸ Last result</button>
+        </div>
+        <div class="last-result" id="result-${s.id}">${esc(s.last_result)}</div>
+      ` : ''}
+      <div class="card-actions">
+        <button class="btn-primary" onclick="runNow('${s.id}', this)">▶ Run Now</button>
+        ${runs.length ? `<button class="btn-ghost" onclick="toggleHistory('${s.id}')">🕒 History (${runs.length})</button>` : ''}
+        <button class="btn-danger" onclick="deleteSchedule('${s.id}', '${esc(s.name)}', this)">🗑 Delete</button>
+      </div>
+      ${runs.length ? renderHistory(s.id, runs) : ''}
+    `;
+    document.getElementById('schedule-list').appendChild(card);
+  }
+
+  function renderHistory(sid, runs) {
+    const entries = runs.slice(0, 10).map(r => {
+      const ts = new Date(r.ran_at + 'Z').toLocaleString();
+      const text = (r.result || '').slice(0, 300) + (r.result && r.result.length > 300 ? '…' : '');
+      return `<div class="history-entry"><div class="ran-at">${ts}</div><div class="result-text">${esc(text)}</div></div>`;
+    }).join('');
+    return `<div class="history-panel" id="history-${sid}">${entries}</div>`;
+  }
+
+  function toggleResult(sid) {
+    const el = document.getElementById('result-' + sid);
+    el.classList.toggle('visible');
+  }
+
+  function toggleHistory(sid) {
+    const el = document.getElementById('history-' + sid);
+    if (el) el.classList.toggle('visible');
+  }
+
+  async function toggleSchedule(sid, enabled, checkbox) {
+    try {
+      await fetch(API + '/schedules/' + sid, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      loadSchedules();
+    } catch {
+      alert('Failed to update schedule.');
+      checkbox.checked = !enabled;
+    }
+  }
+
+  async function runNow(sid, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Running…';
+    try {
+      await fetch(API + '/schedules/' + sid + '/run', { method: 'POST' });
+      btn.innerHTML = '✅ Started';
+      setTimeout(() => { btn.disabled = false; btn.innerHTML = '▶ Run Now'; loadSchedules(); }, 3000);
+    } catch {
+      btn.disabled = false;
+      btn.innerHTML = '▶ Run Now';
+      alert('Failed to start task.');
+    }
+  }
+
+  async function deleteSchedule(sid, name, btn) {
+    if (!confirm('Delete schedule "' + name + '"? This cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+      await fetch(API + '/schedules/' + sid, { method: 'DELETE' });
+      document.getElementById('card-' + sid)?.remove();
+      if (!document.querySelectorAll('.glass-card').length) loadSchedules();
+    } catch {
+      btn.disabled = false;
+      alert('Failed to delete schedule.');
+    }
+  }
+
+  document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('create-btn');
+    const msg = document.getElementById('create-msg');
+    const name  = document.getElementById('f-name').value.trim();
+    const cron  = document.getElementById('f-cron').value.trim();
+    const task  = document.getElementById('f-task').value.trim();
+    const model = document.getElementById('f-model').value.trim() || 'llama3.2';
+    const mcpsRaw = document.getElementById('f-mcps').value.trim();
+    const active_mcps = mcpsRaw ? mcpsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Creating…';
+    msg.style.color = '';
+    msg.textContent = '';
+
+    try {
+      const res = await fetch(API + '/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, cron, task, model, active_mcps }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.style.color = 'var(--success)';
+        msg.textContent = '✅ Schedule created!';
+        document.getElementById('create-form').reset();
+        loadSchedules();
+      } else {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = data.detail || 'Failed to create schedule.';
+      }
+    } catch {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'Network error.';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '➕ Create Schedule';
+    }
+  });
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  loadSchedules();
+</script>
+</body>
+</html>

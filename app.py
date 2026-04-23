@@ -38,6 +38,7 @@ from db.chainlit_data import SQLiteDataLayer
 from db.database import init_db
 from mcp_tools.installer import make_runner_installer_tool
 from mcp_tools.registry import MCPRegistry
+from mcp_tools.scheduler_tools import make_scheduler_tools
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -249,6 +250,24 @@ async def on_start():
         )
     ).send()
 
+    # Notify about scheduled tasks that ran since last session
+    if not is_guest:
+        unnotified = q.list_unnotified_runs()
+        if unnotified:
+            q.mark_runs_notified([r["id"] for r in unnotified])
+            for run in unnotified:
+                result_text = run["result"] or "No output"
+                truncated = len(result_text) > 500
+                preview = result_text[:500] + ("\n\n_…truncated_" if truncated else "")
+                await cl.Message(
+                    content=(
+                        f"📅 **Scheduled task completed:** {run['schedule_name']}\n\n"
+                        f"_Ran at: {run['ran_at']} UTC_\n\n"
+                        f"{preview}"
+                    ),
+                    author="Scheduler",
+                ).send()
+
 
 @cl.on_chat_resume
 async def on_chat_resume(thread):
@@ -443,6 +462,10 @@ def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profi
     inst_def, inst_fn = make_runner_installer_tool(ask_user_fn)
     tool_defs.append(inst_def)
     tool_map["install_mcp_server"] = inst_fn
+
+    sched_defs, sched_map = make_scheduler_tools(model, active_mcps or [])
+    tool_defs += sched_defs
+    tool_map.update(sched_map)
 
     log.debug("Building runner — model=%s tools=%d profile=%s multi=%s", model, len(tool_defs), profile_id, multi_agent)
     builder = build_hierarchical_crew if multi_agent else build_crew

@@ -245,3 +245,49 @@ def delete_schedule(sid: str) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?", (sid,))
     return cur.rowcount > 0
+
+
+# ── Schedule Runs ─────────────────────────────────────────────────────────────
+
+
+def create_schedule_run(schedule_id: str, schedule_name: str, result: str) -> None:
+    run_id = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO schedule_runs (id, schedule_id, schedule_name, result) VALUES (?, ?, ?, ?)",
+            (run_id, schedule_id, schedule_name, result[:4000]),
+        )
+
+
+def list_unnotified_runs() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM schedule_runs WHERE notified = 0 ORDER BY ran_at ASC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_runs_notified(run_ids: list[str]) -> None:
+    if not run_ids:
+        return
+    placeholders = ",".join("?" * len(run_ids))
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE schedule_runs SET notified = 1 WHERE id IN ({placeholders})",
+            run_ids,
+        )
+
+
+def list_schedule_runs(sid: str | None = None, limit: int = 50) -> list[dict]:
+    with get_conn() as conn:
+        if sid:
+            rows = conn.execute(
+                "SELECT * FROM schedule_runs WHERE schedule_id = ? ORDER BY ran_at DESC LIMIT ?",
+                (sid, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM schedule_runs ORDER BY ran_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]

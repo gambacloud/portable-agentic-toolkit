@@ -310,3 +310,16 @@ def mcp_ui():
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "UI File Not Found"
+
+
+@api.get("/schedules-ui", response_class=HTMLResponse, tags=["ui"])
+def schedules_ui():
+    html_path = Path(__file__).parent.parent / "public" / "schedules_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
+@api.get("/schedule-runs", tags=["schedules"])
+def list_schedule_runs(sid: str | None = None, limit: int = 50):
+    return q.list_schedule_runs(sid, limit)
