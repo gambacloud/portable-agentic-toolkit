@@ -114,16 +114,16 @@ class SchedulerEngine:
 def send_to_output(output: dict, message: str) -> tuple[bool, str]:
     import urllib.request
     import json
-    
+
     otype = output.get("type")
     config = output.get("config", {})
-    
+
     if otype == "telegram":
         token = config.get("token")
         chat_id = config.get("chat_id")
         if not token or not chat_id:
             return False, "Missing token or chat_id"
-        
+
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         data = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -135,7 +135,7 @@ def send_to_output(output: dict, message: str) -> tuple[bool, str]:
                     return False, f"HTTP {resp.status}"
         except Exception as e:
             return False, str(e)
-            
+
     # other types later
     return False, f"Unsupported output type: {otype}"
 

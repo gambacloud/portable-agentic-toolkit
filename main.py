@@ -25,11 +25,11 @@ FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 init_db()
 log.info("%s starting — DB initialised", BOT_NAME)
 
-from scheduler.engine import get_engine as _get_scheduler
+from scheduler.engine import get_engine as _get_scheduler  # noqa: E402
 _get_scheduler().start()
 log.info("Scheduler started")
 
-from api.server import api
+from api.server import api  # noqa: E402
 
 # Serve the React production build if it exists
 if FRONTEND_DIST.exists():

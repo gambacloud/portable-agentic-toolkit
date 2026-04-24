@@ -182,7 +182,8 @@ def delete_profile(profile_id: str) -> bool:
 
 
 def create_schedule(name: str, task: str, cron: str, model: str, active_mcps: list, active_outputs: list = None) -> dict:
-    if active_outputs is None: active_outputs = []
+    if active_outputs is None:
+        active_outputs = []
     sid = str(uuid.uuid4())
     with get_conn() as conn:
         conn.execute(

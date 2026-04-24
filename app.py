@@ -490,7 +490,7 @@ def make_draft_tool(loop):
             }
         }
     }
-    
+
     def tool_fn(title: str, content: str, language: str = "") -> str:
         if not loop:
             return "Failed: Event loop not provided."

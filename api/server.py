@@ -312,7 +312,7 @@ def test_output(oid: str):
     output = q.get_output(oid)
     if not output:
         raise HTTPException(404, "Output not found")
-    
+
     from scheduler.engine import send_to_output
     success, msg = send_to_output(output, "This is a test message from Portable Agentic Toolkit!")
     if not success:

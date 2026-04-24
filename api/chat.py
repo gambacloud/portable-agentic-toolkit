@@ -4,7 +4,6 @@ Chat logic shared between the WebSocket handler and the scheduler.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Callable, Optional
 
 import ollama as ol
