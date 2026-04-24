@@ -63,27 +63,40 @@
         var base = 'http://' + window.location.hostname + ':' + API_PORT;
 
         var panel = document.createElement('div');
-        panel.id = 'pat-panel';
+        var chatPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+        var wizardUrl = base + '/wizard-ui?chat_port=' + chatPort;
 
         panel.innerHTML =
-            '<div class="pat-section-title">Toolkit</div>' +
+            '<details open>' +
+            '<summary class="pat-section-title">⚡ DO</summary>' +
+            '<div class="pat-section-content">' +
+            '<a href="' + wizardUrl + '" target="_blank" style="color: #93c5fd;"><span>🚀</span> Quick Start Wizard</a>' +
+            '<a href="/"><span>✨</span> New Agent</a>' +
+            '<a href="' + base + '/schedules-ui" target="_blank"><span>📅</span> Schedule</a>' +
+            '</div>' +
+            '</details>' +
 
-            '<div class="pat-section-title pat-section-sep">Navigate</div>' +
-            '<a href="' + base + '/docs"          target="_blank"><span>🔧</span> API Docs</a>' +
-            '<a href="' + base + '/profiles"      target="_blank"><span>👤</span> Profiles</a>' +
-            '<a href="' + base + '/health"        target="_blank"><span>💚</span> Health</a>' +
-            '<a href="' + base + '/conversations" target="_blank"><span>💬</span> Conversations</a>' +
-            '<a href="' + base + '/mcp-ui"        target="_blank"><span>🔌</span> Manage MCPs</a>' +
+            '<details>' +
+            '<summary class="pat-section-title pat-section-sep">📊 SEE</summary>' +
+            '<div class="pat-section-content">' +
             '<a href="' + base + '/outputs-ui"    target="_blank"><span>📢</span> Outputs</a>' +
-            '<a href="' + base + '/schedules-ui" target="_blank"><span>📅</span> Schedules</a>' +
+            '<a href="' + base + '/conversations" target="_blank"><span>💬</span> Conversations</a>' +
+            '<a href="' + base + '/health"        target="_blank"><span>💚</span> Health</a>' +
+            '</div>' +
+            '</details>' +
 
-            '<div class="pat-section-title pat-section-sep">Ollama</div>' +
+            '<details>' +
+            '<summary class="pat-section-title pat-section-sep">⚙️ CONFIGURE</summary>' +
+            '<div class="pat-section-content">' +
+            '<a href="' + base + '/mcp-ui"        target="_blank"><span>🔌</span> MCPs</a>' +
+            '<a href="' + base + '/profiles"      target="_blank"><span>👤</span> Profiles</a>' +
             '<a href="http://' + window.location.hostname + ':11434" target="_blank"><span>🦙</span> Ollama</a>' +
+            '<a href="' + base + '/docs"          target="_blank"><span>🔧</span> API Docs</a>' +
             '<a href="https://ollama.com/library" target="_blank"><span>📦</span> Model Library</a>' +
-
-            '<div class="pat-section-title pat-section-sep">Docs</div>' +
-            '<a href="https://docs.chainlit.io"       target="_blank"><span>📖</span> Chainlit</a>' +
-            '<a href="https://modelcontextprotocol.io" target="_blank"><span>🔌</span> MCP</a>' +
+            '<a href="https://docs.chainlit.io"       target="_blank"><span>📖</span> Chainlit Docs</a>' +
+            '<a href="https://modelcontextprotocol.io" target="_blank"><span>🔌</span> MCP Docs</a>' +
+            '</div>' +
+            '</details>' +
 
             '<div class="pat-section-title pat-section-sep">Settings</div>';
 

@@ -392,7 +392,7 @@ async def on_message(message: cl.Message):
     try:
         multi_agent: bool = cl.user_session.get("multi_agent", False)
         result = await asyncio.to_thread(
-            _run_crew_sync, task_content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent, active_mcps
+            _run_crew_sync, task_content, model, registry, ask_user_sync, on_agent_step, profile_id, multi_agent, active_mcps, loop
         )
         elapsed = time.perf_counter() - t_start
         log.info("Crew finished in %.2fs — result_len=%d", elapsed, len(str(result)))
@@ -464,7 +464,45 @@ async def _emit_step(name: str, content: str):
         step.output = content
 
 
-def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False, active_mcps=None) -> str:
+def make_draft_tool(loop):
+    tool_def = {
+        "type": "function",
+        "function": {
+            "name": "display_draft_in_ui",
+            "description": "Displays a formatted text draft or piece of code in a side panel for the user to easily read and copy. Use this whenever the user asks to generate a draft, document, or piece of code.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The title of the draft (e.g., 'Marketing Email', 'Python Script')."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content of the draft."
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "The programming language for syntax highlighting if it is code (e.g., 'python', 'javascript', 'markdown'). Leave empty for plain text."
+                    }
+                },
+                "required": ["title", "content"]
+            }
+        }
+    }
+    
+    def tool_fn(title: str, content: str, language: str = "") -> str:
+        if not loop:
+            return "Failed: Event loop not provided."
+        async def _send():
+            await cl.Text(name=title, content=content, display="side", language=language or None).send()
+        asyncio.run_coroutine_threadsafe(_send(), loop)
+        return "Draft displayed in the UI successfully."
+
+    return tool_def, tool_fn
+
+
+def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profile_id=None, multi_agent=False, active_mcps=None, loop=None) -> str:
     tool_defs: list = []
     tool_map: dict = {}
 
@@ -480,6 +518,10 @@ def _run_crew_sync(user_message, model, registry, ask_user_fn, on_step_fn, profi
     sched_defs, sched_map = make_scheduler_tools(model, active_mcps or [])
     tool_defs += sched_defs
     tool_map.update(sched_map)
+
+    draft_def, draft_fn = make_draft_tool(loop)
+    tool_defs.append(draft_def)
+    tool_map["display_draft_in_ui"] = draft_fn
 
     log.debug("Building runner — model=%s tools=%d profile=%s multi=%s", model, len(tool_defs), profile_id, multi_agent)
     builder = build_hierarchical_crew if multi_agent else build_crew

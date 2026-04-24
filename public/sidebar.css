@@ -41,6 +41,34 @@
     user-select: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     margin-bottom: 4px;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+#pat-panel .pat-section-title::-webkit-details-marker {
+    display: none;
+}
+
+#pat-panel .pat-section-title::after {
+    content: '▼';
+    font-size: 8px;
+    opacity: 0.5;
+    transition: transform 0.2s;
+}
+
+#pat-panel details:not([open]) .pat-section-title::after {
+    transform: rotate(-90deg);
+}
+
+#pat-panel .pat-section-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-left: 4px;
+    margin-bottom: 8px;
 }
 
 #pat-panel .pat-section-sep {

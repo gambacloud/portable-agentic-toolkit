@@ -17,7 +17,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 
 api = FastAPI(
     title=f"{BOT_NAME} API",
-    version="1.0.0",
+    version="1.2.0",
     docs_url="/docs",
     redoc_url=None,
     openapi_url="/openapi.json",
@@ -377,6 +377,14 @@ def schedules_ui():
 @api.get("/outputs-ui", response_class=HTMLResponse, tags=["ui"])
 def outputs_ui():
     html_path = Path(__file__).parent.parent / "public" / "outputs_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
+@api.get("/wizard-ui", response_class=HTMLResponse, tags=["ui"])
+def wizard_ui():
+    html_path = Path(__file__).parent.parent / "public" / "wizard_ui.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "UI File Not Found"

@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quick Start Wizard</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --success: #10b981;
+    --warning: #f59e0b;
+  }
+  body {
+    background: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                      radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  p.subtitle {
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
+  }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+  
+  /* Stepper */
+  .stepper {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    position: relative;
+  }
+  .stepper::before {
+    content: '';
+    position: absolute;
+    top: 15px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    z-index: 0;
+  }
+  .step {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+  }
+  .step-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-color);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    transition: all 0.3s;
+  }
+  .step.active .step-circle {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .step.completed .step-circle {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+  }
+  .step-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .step.active .step-label {
+    color: white;
+  }
+  
+  /* Step Content */
+  .step-content {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+  }
+  .step-content.active {
+    display: block;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* Form Elements */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  input[type="text"], input[type="password"], textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+  }
+  input[type="text"]:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+  
+  /* Buttons */
+  .btn-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  button.secondary {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  button.secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  button:hover:not(.secondary) {
+    background: var(--accent-hover);
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Status Items */
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+  }
+  .status-icon {
+    font-size: 1.5rem;
+  }
+  .status-text {
+    flex-grow: 1;
+  }
+  .status-text h4 { margin: 0 0 0.25rem 0; }
+  .status-text p { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+  .status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 99px;
+    font-size: 0.8rem;
+    font-weight: bold;
+  }
+  .bg-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+  .bg-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+  .bg-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+  
+  code {
+    background: rgba(0,0,0,0.3);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    user-select: all;
+  }
+  .big-code {
+    display: block;
+    padding: 1rem;
+    margin: 1rem 0;
+    font-size: 1.1rem;
+    text-align: center;
+  }
+  
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  #finish-screen {
+    text-align: center;
+    padding: 2rem 0;
+  }
+  #finish-screen h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    color: var(--success);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🚀 Quick Start Wizard</h1>
+  <p class="subtitle">Set up your Portable Agentic Toolkit in minutes.</p>
+
+  <div class="stepper">
+    <div class="step active" id="indicator-1">
+      <div class="step-circle">1</div>
+      <div class="step-label">Detect</div>
+    </div>
+    <div class="step" id="indicator-2">
+      <div class="step-circle">2</div>
+      <div class="step-label">Model</div>
+    </div>
+    <div class="step" id="indicator-3">
+      <div class="step-circle">3</div>
+      <div class="step-label">Identity</div>
+    </div>
+    <div class="step" id="indicator-4">
+      <div class="step-circle">4</div>
+      <div class="step-label">Connectors</div>
+    </div>
+    <div class="step" id="indicator-5">
+      <div class="step-circle">5</div>
+      <div class="step-label">Finish</div>
+    </div>
+  </div>
+
+  <div class="glass-card">
+    
+    <!-- STEP 1: DETECT -->
+    <div class="step-content active" id="step-1">
+      <h2>System Check</h2>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">We are detecting your environment capabilities to ensure everything is ready.</p>
+      
+      <div id="detect-results">
+        <div style="text-align:center; padding:2rem;"><div class="spinner" style="width:30px; height:30px;"></div></div>
+      </div>
+      
+      <div class="btn-group">
+        <button onclick="nextStep()">Next: Setup Model ➔</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: MODEL -->
+    <div class="step-content" id="step-2">
+      <h2>AI Model</h2>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">To run agents, you need an LLM. We support local models via Ollama or fast cloud models via Groq.</p>
+      
+      <div id="model-status" class="status-item" style="margin-bottom: 1.5rem;">
+         <!-- Populated dynamically -->
+      </div>
+      
+      <div id="model-instructions" style="display:none; background:rgba(0,0,0,0.2); padding:1.5rem; border-radius:8px;">
+        <h4 style="margin-top:0;">Option A: Local Model (Ollama)</h4>
+        <p>If you have Ollama installed, open your terminal and run:</p>
+        <code class="big-code">ollama pull llama3.2</code>
+        <p style="margin-bottom:0; font-size:0.9rem; color:var(--text-muted);">This takes a minute or two depending on your internet connection.</p>
+        
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:1.5rem 0;">
+        
+        <h4 style="margin-top:0;">Option B: Cloud Model (Groq)</h4>
+        <p>Edit your <code>.env</code> file in the project directory and add your API key:</p>
+        <code>GROQ_API_KEY=gsk_your_api_key_here</code>
+      </div>
+      
+      <div class="btn-group">
+        <button class="secondary" onclick="prevStep()">⬅ Back</button>
+        <button onclick="nextStep()">Next: Create Identity ➔</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: IDENTITY -->
+    <div class="step-content" id="step-3">
+      <h2>Agent Identity</h2>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">Create your first Expert Profile. This gives your agent a persona, a specific role, and background knowledge to act upon.</p>
+      
+      <div class="form-group">
+        <label>Profile Name</label>
+        <input type="text" id="profile-name" placeholder="e.g. Code Reviewer, Python Expert" value="Tech Assistant">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <input type="text" id="profile-role" placeholder="e.g. Senior Software Engineer" value="Helpful Assistant">
+      </div>
+      <div class="form-group">
+        <label>Goal</label>
+        <textarea id="profile-goal" rows="2" placeholder="What is this agent's primary objective?">Assist the user in completing daily tech tasks, writing scripts, and finding information.</textarea>
+      </div>
+      <div class="form-group">
+        <label>Backstory</label>
+        <textarea id="profile-backstory" rows="3" placeholder="Context for the agent's behavior...">You are a concise, highly skilled AI assistant. You prefer minimal explanations and exact, working solutions.</textarea>
+      </div>
+      
+      <div class="btn-group">
+        <button class="secondary" onclick="prevStep()">⬅ Back</button>
+        <button onclick="saveProfile()" id="btn-save-profile">Create Profile & Continue ➔</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: CONNECTORS -->
+    <div class="step-content" id="step-4">
+      <h2>Connectors (MCPs)</h2>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">Connectors (Model Context Protocol servers) give your agent real-world capabilities. Install a couple of basic ones to get started.</p>
+      
+      <div class="status-item">
+        <div class="status-icon">🌐</div>
+        <div class="status-text">
+          <h4>Brave Search</h4>
+          <p>Allows the agent to search the internet for real-time information.</p>
+        </div>
+        <button id="btn-install-brave" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installMcp('server-brave-search', 'btn-install-brave')">Install</button>
+      </div>
+      
+      <div class="status-item">
+        <div class="status-icon">📁</div>
+        <div class="status-text">
+          <h4>Filesystem</h4>
+          <p>Allows the agent to read and write files on your local machine.</p>
+        </div>
+        <button id="btn-install-fs" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installMcp('server-filesystem', 'btn-install-fs')">Install</button>
+      </div>
+      
+      <div class="btn-group">
+        <button class="secondary" onclick="prevStep()">⬅ Back</button>
+        <button onclick="nextStep()">Skip / Next ➔</button>
+      </div>
+    </div>
+
+    <!-- STEP 5: FINISH -->
+    <div class="step-content" id="step-5">
+      <div id="finish-screen">
+        <h2>🎉 All Set!</h2>
+        <p style="color:var(--text-muted); font-size:1.1rem; max-width:500px; margin:0 auto 2rem auto;">
+          Your Portable Agentic Toolkit is ready to go. You have an AI model, a custom expert profile, and connectors configured.
+        </p>
+        <button onclick="startNewAgent()" style="margin:0 auto; font-size:1.2rem; padding:1rem 2.5rem; background:linear-gradient(135deg, var(--accent), #8b5cf6);">
+          💬 START NEW AGENT
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let currentStep = 1;
+  let systemHealth = null;
+
+  async function detectSystem() {
+    try {
+      const res = await fetch('/health');
+      systemHealth = await res.json();
+      
+      let html = '';
+      
+      // DB Status
+      html += `
+        <div class="status-item">
+          <div class="status-icon">🗄️</div>
+          <div class="status-text">
+            <h4>Database</h4>
+            <p>SQLite persistence active. ${systemHealth.db.users} users, ${systemHealth.db.conversations} chats.</p>
+          </div>
+          <div class="status-badge bg-success">Connected</div>
+        </div>
+      `;
+      
+      // Ollama Status
+      const olStatus = systemHealth.ollama.status === 'ok' ? 'bg-success' : 'bg-warning';
+      const olText = systemHealth.ollama.status === 'ok' ? 'Running' : 'Unreachable / Not Installed';
+      html += `
+        <div class="status-item">
+          <div class="status-icon">🦙</div>
+          <div class="status-text">
+            <h4>Ollama Daemon</h4>
+            <p>Local LLM runner status.</p>
+          </div>
+          <div class="status-badge ${olStatus}">${olText}</div>
+        </div>
+      `;
+      
+      document.getElementById('detect-results').innerHTML = html;
+      
+      // Setup Model Step based on health
+      setupModelStep();
+      
+    } catch (err) {
+      document.getElementById('detect-results').innerHTML = `
+        <div class="status-item">
+          <div class="status-icon">❌</div>
+          <div class="status-text">
+            <h4>API Unreachable</h4>
+            <p>Could not connect to the backend API.</p>
+          </div>
+          <div class="status-badge bg-danger">Error</div>
+        </div>
+      `;
+    }
+  }
+
+  function setupModelStep() {
+    const statusDiv = document.getElementById('model-status');
+    const instDiv = document.getElementById('model-instructions');
+    
+    if (systemHealth && systemHealth.ollama.models && systemHealth.ollama.models.length > 0) {
+      const models = systemHealth.ollama.models.join(', ');
+      statusDiv.innerHTML = `
+        <div class="status-icon">✅</div>
+        <div class="status-text">
+          <h4>Models Found</h4>
+          <p>You have local models ready: <strong>${models}</strong></p>
+        </div>
+        <div class="status-badge bg-success">Ready</div>
+      `;
+      instDiv.style.display = 'none';
+    } else {
+      statusDiv.innerHTML = `
+        <div class="status-icon">⚠️</div>
+        <div class="status-text">
+          <h4>No Models Detected</h4>
+          <p>You need to download a model or configure an API key to continue.</p>
+        </div>
+        <div class="status-badge bg-warning">Action Required</div>
+      `;
+      instDiv.style.display = 'block';
+    }
+  }
+
+  async function saveProfile() {
+    const btn = document.getElementById('btn-save-profile');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Saving...';
+    
+    const body = {
+      name: document.getElementById('profile-name').value || 'Tech Assistant',
+      role: document.getElementById('profile-role').value,
+      goal: document.getElementById('profile-goal').value,
+      backstory: document.getElementById('profile-backstory').value,
+      is_default: true
+    };
+    
+    try {
+      await fetch('/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      nextStep();
+    } catch (e) {
+      alert("Failed to save profile.");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Create Profile & Continue ➔';
+    }
+  }
+
+  async function installMcp(name, btnId) {
+    const btn = document.getElementById(btnId);
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    
+    try {
+      const res = await fetch('/mcps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        btn.innerHTML = 'Installed ✓';
+        btn.style.color = 'var(--success)';
+        btn.style.borderColor = 'var(--success)';
+      } else {
+        btn.innerHTML = 'Failed';
+        btn.style.borderColor = 'var(--danger)';
+      }
+    } catch (e) {
+      btn.innerHTML = 'Error';
+    }
+  }
+
+  function updateStepper() {
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById('indicator-' + i);
+      const content = document.getElementById('step-' + i);
+      
+      if (i < currentStep) {
+        el.className = 'step completed';
+        content.className = 'step-content';
+      } else if (i === currentStep) {
+        el.className = 'step active';
+        content.className = 'step-content active';
+      } else {
+        el.className = 'step';
+        content.className = 'step-content';
+      }
+    }
+  }
+
+  function nextStep() {
+    if (currentStep < 5) {
+      currentStep++;
+      updateStepper();
+    }
+  }
+
+  function prevStep() {
+    if (currentStep > 1) {
+      currentStep--;
+      updateStepper();
+    }
+  }
+
+  function startNewAgent() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatPort = urlParams.get('chat_port') || '8000';
+    window.location.href = window.location.protocol + '//' + window.location.hostname + ':' + chatPort + '/';
+  }
+
+  // Initialize
+  detectSystem();
+</script>
+</body>
+</html>
