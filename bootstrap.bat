@@ -11,7 +11,7 @@ echo.
 :: ── Step 1: Check / install uv ──────────────────────────────────────────────
 where uv >nul 2>&1
 if errorlevel 1 (
-    echo [1/5] Installing uv package manager...
+    echo [1/6] Installing uv package manager...
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     set "PATH=%USERPROFILE%\.local\bin;%PATH%"
     where uv >nul 2>&1
@@ -22,12 +22,37 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    echo [1/5] uv installed successfully.
+    echo [1/6] uv installed successfully.
 ) else (
-    echo [1/5] uv found.
+    echo [1/6] uv found.
 )
 
-:: ── Step 2: Check Ollama ─────────────────────────────────────────────────────
+:: ── Step 2: Check Node.js ─────────────────────────────────────────────────────
+node --version >nul 2>&1
+if errorlevel 1 (
+    if exist "%ProgramFiles%\nodejs\node.exe" (
+        set "PATH=%ProgramFiles%\nodejs;%PATH%"
+    ) else if exist "%ProgramFiles(x86)%\nodejs\node.exe" (
+        set "PATH=%ProgramFiles(x86)%\nodejs;%PATH%"
+    ) else (
+        echo.
+        echo ERROR: Node.js not found.
+        echo Download and install from: https://nodejs.org (LTS version)
+        echo Then re-run this script.
+        pause
+        exit /b 1
+    )
+)
+node --version >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo ERROR: Node.js found but could not run. Try restarting your PC.
+    pause
+    exit /b 1
+)
+echo [2/6] Node.js found.
+
+:: ── Step 3: Check Ollama ─────────────────────────────────────────────────────
 where ollama >nul 2>&1
 if errorlevel 1 (
     echo.
@@ -37,7 +62,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo [2/5] Ollama found.
+echo [3/6] Ollama found.
 
 :: Start Ollama service if not already running
 ollama list >nul 2>&1
@@ -52,7 +77,7 @@ if errorlevel 1 (
     )
 )
 
-:: ── Step 2b: Ensure .env exists with a JWT secret ───────────────────────────
+:: ── Step 3b: Ensure .env exists ───────────────────────────────────────────────
 if not exist .env (
     if exist .env.example (
         copy .env.example .env >nul
@@ -61,15 +86,9 @@ if not exist .env (
         type nul > .env
     )
 )
-findstr /R /C:"^CHAINLIT_AUTH_SECRET=" .env >nul 2>&1
-if errorlevel 1 (
-    for /f "delims=" %%i in ('powershell -Command "[guid]::NewGuid().ToString(\"N\") + [guid]::NewGuid().ToString(\"N\")"') do set JWT=%%i
-    echo CHAINLIT_AUTH_SECRET=!JWT!>> .env
-    echo   JWT secret generated and saved to .env.
-)
 
-:: ── Step 3: Create venv and install dependencies ─────────────────────────────
-echo [3/5] Installing Python dependencies (this may take a minute)...
+:: ── Step 4: Install Python dependencies ──────────────────────────────────────
+echo [4/6] Installing Python dependencies (this may take a minute)...
 uv sync --no-dev
 if errorlevel 1 (
     echo.
@@ -78,32 +97,41 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo   Dependencies installed.
+echo   Python dependencies installed.
 
-:: ── Step 4: Pull default LLM model ──────────────────────────────────────────
-echo [4/5] Pulling default model (llama3.2)...
+:: ── Step 5: Build React frontend ─────────────────────────────────────────────
+echo [5/6] Building React frontend...
+cd frontend
+call npm install --silent
+if errorlevel 1 (
+    echo.
+    echo ERROR: npm install failed.
+    pause
+    exit /b 1
+)
+call npm run build
+if errorlevel 1 (
+    echo.
+    echo ERROR: React build failed.
+    pause
+    exit /b 1
+)
+cd ..
+echo   Frontend built successfully.
+
+:: ── Step 6: Pull default LLM model and launch ────────────────────────────────
+echo [6/6] Pulling default model (llama3.2)...
 ollama pull llama3.2
 if errorlevel 1 (
     echo   WARNING: Could not pull llama3.2.
     echo   Pull a model manually with:  ollama pull llama3.2
-    echo   Then re-run bootstrap or just use: uv run chainlit run app.py
-)
-
-:: ── Step 5: Find free port and launch Chainlit UI ────────────────────────────
-echo [5/5] Launching UI...
-
-set PORT=8000
-:find_port
-powershell -Command "if (Get-NetTCPConnection -LocalPort %PORT% -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" >nul 2>&1
-if errorlevel 1 (
-    set /a PORT=%PORT%+1
-    goto find_port
 )
 
 echo.
-echo   Access the toolkit at:  http://localhost:%PORT%
+echo   Access the toolkit at:  http://localhost:8002
+echo   API docs at:            http://localhost:8002/docs
 echo   Press Ctrl+C to stop.
 echo.
-uv run chainlit run app.py --port %PORT% --host localhost --no-cache
+uv run python main.py
 
 pause

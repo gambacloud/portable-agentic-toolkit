@@ -45,3 +45,7 @@ models/
 # Temp
 *.tmp
 *.bak
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
