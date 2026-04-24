@@ -30,7 +30,7 @@ jobs:
       - name: Check imports resolve
         run: |
           uv run python -c "
-          import agents.crew
+          import agents.runner
           import mcp_tools.registry
           import utils.logger
           import utils.ollama_utils
