@@ -13,6 +13,7 @@ import ollama
 import yaml
 
 from utils.logger import get_logger
+from utils.settings import get_system_prompt_extra, get_user_prompt_prefix
 
 log = get_logger(__name__)
 
@@ -32,7 +33,10 @@ def build_crew(
 ) -> "_Runner":
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
+    extra = get_system_prompt_extra()
     backstory = f"{dna}\n\n{cfg['backstory']}" if dna else cfg["backstory"]
+    if extra:
+        backstory = f"{backstory}\n\n{extra}"
     log.info("Building single agent — model=%s tools=%d profile=%s", model, len(tool_defs), profile_id)
 
     agent = _OllamaAgent(
@@ -58,6 +62,7 @@ def build_hierarchical_crew(
 ) -> "_Runner":
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
+    extra = get_system_prompt_extra()
     crew_cfgs = _load_crew_agent_configs()
 
     if not crew_cfgs:
@@ -66,11 +71,15 @@ def build_hierarchical_crew(
 
     log.info("Building team — model=%s workers=%d tools=%d", model, len(crew_cfgs), len(tool_defs))
 
+    def _backstory(text: str) -> str:
+        b = f"{dna}\n\n{text}" if dna else text
+        return f"{b}\n\n{extra}" if extra else b
+
     workers = [
         _OllamaAgent(
             role=c["role"],
             goal=c["goal"],
-            backstory=f"{dna}\n\n{c['backstory']}" if dna else c["backstory"],
+            backstory=_backstory(c["backstory"]),
             model=model,
             tool_defs=tool_defs,
             tool_map=tool_map,
@@ -83,7 +92,7 @@ def build_hierarchical_crew(
     manager_cfg = {
         "role": "Team Manager — " + cfg["role"],
         "goal": cfg["goal"],
-        "backstory": (f"{dna}\n\n" if dna else "") + cfg["backstory"],
+        "backstory": _backstory(cfg["backstory"]),
     }
     return _Runner(workers, manager_cfg=manager_cfg, on_step=on_step, model=model, on_token_usage=on_token_usage)
 
@@ -118,6 +127,9 @@ class _OllamaAgent:
     _LITELLM_PREFIXES = ("groq/", "claude/", "gemini/")
 
     def run(self, task: str) -> str:
+        prefix = get_user_prompt_prefix()
+        if prefix:
+            task = f"{prefix}\n\n{task}"
         if any(self.model.startswith(p) for p in self._LITELLM_PREFIXES):
             return self._run_litellm(task)
         return self._run_ollama(task)

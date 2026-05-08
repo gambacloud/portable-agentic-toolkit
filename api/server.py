@@ -52,6 +52,20 @@ def init_db_budget():
         except Exception:
             pass
 
+# ── Settings endpoints ────────────────────────────────────────────────────────
+
+@api.get("/api/settings")
+def get_settings_info():
+    from utils.settings import get_logo_filename, get_system_prompt_extra, get_user_prompt_prefix, SETTINGS_DIR
+    logo = get_logo_filename()
+    return {
+        "settings_dir": str(SETTINGS_DIR),
+        "logo_url": f"/settings-assets/{logo}" if logo else None,
+        "has_system_prompt": bool(get_system_prompt_extra()),
+        "has_user_prompt": bool(get_user_prompt_prefix()),
+    }
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 

@@ -12,6 +12,7 @@ os.environ.setdefault("CHROMA_TELEMETRY", "False")
 import uvicorn
 
 from utils.paths import app_dir, bundle_dir
+from utils.settings import ensure_settings_dir, SETTINGS_DIR
 
 _ENV_PATH = app_dir() / ".env"
 _ENV_TEMPLATE = """\
@@ -46,7 +47,9 @@ BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 API_PORT = int(os.getenv("API_PORT", "8002"))
 FRONTEND_DIST = bundle_dir() / "frontend" / "dist"
 
-log.info("Config: %s", _ENV_PATH)
+ensure_settings_dir()
+log.info("Config : %s", _ENV_PATH)
+log.info("Settings: %s", SETTINGS_DIR)
 init_db()
 log.info("%s starting — DB initialised", BOT_NAME)
 
@@ -57,6 +60,9 @@ log.info("Scheduler started")
 from api.server import api  # noqa: E402
 
 # Serve the React production build if it exists
+from fastapi.staticfiles import StaticFiles as _SF
+api.mount("/settings-assets", _SF(directory=str(SETTINGS_DIR), html=False), name="settings-assets")
+
 if FRONTEND_DIST.exists():
     from fastapi.staticfiles import StaticFiles
     api.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")

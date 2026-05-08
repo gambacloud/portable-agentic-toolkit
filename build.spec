@@ -80,6 +80,7 @@ a = Analysis(
         "utils.logger",
         "utils.ollama_utils",
         "utils.paths",
+        "utils.settings",
         # misc
         "ollama",
         "mcp",
