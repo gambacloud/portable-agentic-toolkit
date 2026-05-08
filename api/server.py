@@ -39,6 +39,19 @@ api.add_middleware(
 )
 
 
+@api.on_event("startup")
+def init_db_budget():
+    from db.database import get_conn
+    with get_conn() as conn:
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN token_usage INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN token_limit INTEGER DEFAULT 1000000") # Default 1M limit
+        except Exception:
+            pass
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 
@@ -128,6 +141,15 @@ def health():
 def get_me(user_id: str = Depends(current_user)):
     return q.upsert_user(user_id)
 
+
+@api.get("/users/me/budget", tags=["users"])
+def get_budget(user_id: str = Depends(current_user)):
+    from db.database import get_conn
+    with get_conn() as conn:
+        res = conn.execute("SELECT token_usage, token_limit FROM users WHERE id = ?", (user_id,)).fetchone()
+        if res:
+            return {"token_usage": res[0] or 0, "token_limit": res[1] or 0}
+    return {"token_usage": 0, "token_limit": 1000000}
 
 @api.get("/users/me/conversations", tags=["users"])
 def my_conversations(limit: int = 20, user_id: str = Depends(current_user)):
@@ -608,13 +630,31 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
                 if persist and conv_id:
                     q.append_message(conv_id, "user", content)
 
+                if persist:
+                    from db.database import get_conn
+                    with get_conn() as conn:
+                        usage_row = conn.execute("SELECT token_usage, token_limit FROM users WHERE id = ?", (user_id,)).fetchone()
+                        if usage_row:
+                            usage, limit = usage_row[0] or 0, usage_row[1] or 0
+                            if limit > 0 and usage >= limit:
+                                await websocket.send_json({"type": "error", "content": f"Budget exceeded. You have used {usage} out of your {limit} tokens limit."})
+                                continue
+
+                def on_token_usage(prompt_tokens: int, completion_tokens: int):
+                    total = prompt_tokens + completion_tokens
+                    if total > 0 and persist:
+                        from db.database import get_conn
+                        with get_conn() as conn:
+                            conn.execute("UPDATE users SET token_usage = COALESCE(token_usage, 0) + ? WHERE id = ?", (total, user_id))
+                        send_sync({"type": "token_update", "added": total})
+
                 from api.chat import run_crew_sync
                 try:
                     result = await asyncio.to_thread(
                         run_crew_sync,
                         content, model, registry,
                         ask_user_sync, on_agent_step, send_sync,
-                        profile_id, multi_agent, active_mcps,
+                        profile_id, multi_agent, active_mcps, on_token_usage
                     )
                     if persist and conv_id:
                         q.append_message(conv_id, "assistant", str(result))

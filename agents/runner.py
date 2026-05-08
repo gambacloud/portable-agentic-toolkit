@@ -28,6 +28,7 @@ def build_crew(
     tool_map: dict,
     on_step: Optional[Callable] = None,
     profile_id: Optional[str] = None,
+    on_token_usage: Optional[Callable[[int, int], None]] = None,
 ) -> "_Runner":
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
@@ -42,8 +43,9 @@ def build_crew(
         tool_defs=tool_defs,
         tool_map=tool_map,
         on_step=on_step,
+        on_token_usage=on_token_usage,
     )
-    return _Runner([agent], on_step=on_step, model=model)
+    return _Runner([agent], on_step=on_step, model=model, on_token_usage=on_token_usage)
 
 
 def build_hierarchical_crew(
@@ -52,6 +54,7 @@ def build_hierarchical_crew(
     tool_map: dict,
     on_step: Optional[Callable] = None,
     profile_id: Optional[str] = None,
+    on_token_usage: Optional[Callable[[int, int], None]] = None,
 ) -> "_Runner":
     cfg = _agent_config(profile_id=profile_id)
     dna = _load_company_dna()
@@ -59,7 +62,7 @@ def build_hierarchical_crew(
 
     if not crew_cfgs:
         log.warning("No crew_agents in agents.yaml — falling back to single agent")
-        return build_crew(model=model, tool_defs=tool_defs, tool_map=tool_map, on_step=on_step, profile_id=profile_id)
+        return build_crew(model=model, tool_defs=tool_defs, tool_map=tool_map, on_step=on_step, profile_id=profile_id, on_token_usage=on_token_usage)
 
     log.info("Building team — model=%s workers=%d tools=%d", model, len(crew_cfgs), len(tool_defs))
 
@@ -72,6 +75,7 @@ def build_hierarchical_crew(
             tool_defs=tool_defs,
             tool_map=tool_map,
             on_step=on_step,
+            on_token_usage=on_token_usage,
         )
         for c in crew_cfgs
     ]
@@ -81,7 +85,7 @@ def build_hierarchical_crew(
         "goal": cfg["goal"],
         "backstory": (f"{dna}\n\n" if dna else "") + cfg["backstory"],
     }
-    return _Runner(workers, manager_cfg=manager_cfg, on_step=on_step, model=model)
+    return _Runner(workers, manager_cfg=manager_cfg, on_step=on_step, model=model, on_token_usage=on_token_usage)
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -97,6 +101,7 @@ class _OllamaAgent:
         tool_defs: list,
         tool_map: dict,
         on_step: Optional[Callable] = None,
+        on_token_usage: Optional[Callable[[int, int], None]] = None,
         max_iter: int = 6,
     ):
         self.role = role
@@ -104,6 +109,7 @@ class _OllamaAgent:
         self.tool_defs = tool_defs
         self.tool_map = tool_map
         self.on_step = on_step
+        self.on_token_usage = on_token_usage
         self.max_iter = max_iter
         self._system = (
             f"You are {role}.\nGoal: {goal}\n\n{backstory}"
@@ -129,6 +135,9 @@ class _OllamaAgent:
                     messages=messages,
                     tools=self.tool_defs if self.tool_defs else None,
                 )
+            if self.on_token_usage:
+                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+                
             except Exception as exc:
                 log.error("Ollama chat error: %s", exc)
                 return f"Error communicating with model: {exc}"
@@ -162,6 +171,8 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = ollama.chat(model=self.model, messages=messages)
+            if self.on_token_usage:
+                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             return resp.message.content or "Unable to complete task within iteration limit."
         except Exception as exc:
             return f"Error: {exc}"
@@ -198,6 +209,8 @@ class _OllamaAgent:
         for _ in range(self.max_iter):
             try:
                 resp = self._litellm_chat(messages, self.tool_defs)
+                if self.on_token_usage and hasattr(resp, "usage") and resp.usage:
+                    self.on_token_usage(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
             except Exception as exc:
                 log.error("LiteLLM error: %s", exc)
                 return f"Error communicating with model: {exc}"
@@ -238,6 +251,8 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = self._litellm_chat(messages, None)
+            if self.on_token_usage and hasattr(resp, "usage") and resp.usage:
+                self.on_token_usage(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
             return resp.choices[0].message.content or "Unable to complete."
         except Exception as exc:
             return f"Error: {exc}"
@@ -263,11 +278,13 @@ class _Runner:
         manager_cfg: Optional[dict] = None,
         on_step: Optional[Callable] = None,
         model: Optional[str] = None,
+        on_token_usage: Optional[Callable[[int, int], None]] = None,
     ):
         self._agents = agents
         self._manager_cfg = manager_cfg
         self._on_step = on_step
         self._model = model
+        self._on_token_usage = on_token_usage
 
     def kickoff(self, inputs: dict) -> str:
         task = inputs.get("task", "")
@@ -334,6 +351,7 @@ class _Runner:
             tool_defs=[],
             tool_map={},
             on_step=on_step,
+            on_token_usage=self._on_token_usage,
         )
 
         synthesis_prompt = (

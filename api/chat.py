@@ -102,6 +102,7 @@ def run_crew_sync(
     profile_id: Optional[str] = None,
     multi_agent: bool = False,
     active_mcps: Optional[list[str]] = None,
+    on_token_usage: Optional[Callable[[int, int], None]] = None,
 ) -> str:
     tool_defs: list = []
     tool_map: dict = {}
@@ -144,5 +145,6 @@ def run_crew_sync(
         tool_map=tool_map,
         on_step=on_step_fn,
         profile_id=profile_id,
+        on_token_usage=on_token_usage,
     )
     return runner.kickoff(inputs={"task": user_message})
