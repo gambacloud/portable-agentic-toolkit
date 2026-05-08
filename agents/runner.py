@@ -135,9 +135,8 @@ class _OllamaAgent:
                     messages=messages,
                     tools=self.tool_defs if self.tool_defs else None,
                 )
-            if self.on_token_usage:
-                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
-                
+                if self.on_token_usage:
+                    self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             except Exception as exc:
                 log.error("Ollama chat error: %s", exc)
                 return f"Error communicating with model: {exc}"
