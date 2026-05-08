@@ -9,6 +9,7 @@ Build:
   GitHub CI:     triggered automatically on version tags.
 """
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(".").resolve()
 
@@ -22,6 +23,7 @@ a = Analysis(
         (str(ROOT / "frontend" / "dist"), "frontend/dist"),
         (str(ROOT / "config"), "config"),
         (str(ROOT / "bin" / "mcp_servers"), "bin/mcp_servers"),
+        *collect_data_files("litellm"),
     ],
     hiddenimports=[
         # uvicorn
