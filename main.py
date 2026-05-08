@@ -5,17 +5,18 @@ Run with: uv run python main.py
 import os
 from pathlib import Path
 
+import uvicorn
+
+from utils.paths import app_dir, bundle_dir
+
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent / ".env", override=False)
+    load_dotenv(app_dir() / ".env", override=False)
 except ImportError:
     pass
 
-import uvicorn
-
 from db.database import init_db
 from utils.logger import get_logger
-from utils.paths import bundle_dir
 
 log = get_logger(__name__)
 
@@ -44,5 +45,13 @@ else:
     )
 
 if __name__ == "__main__":
-    log.info("%s ready — http://localhost:%d  (docs: http://localhost:%d/docs)", BOT_NAME, API_PORT, API_PORT)
-    uvicorn.run(api, host="0.0.0.0", port=API_PORT, log_level="info")
+    import threading
+    import webbrowser
+
+    url = f"http://localhost:{API_PORT}"
+    log.info("%s ready — %s  (docs: %s/docs)", BOT_NAME, url, url)
+
+    # Open browser after server is up (0.5 s delay)
+    threading.Timer(0.5, webbrowser.open, args=[url]).start()
+
+    uvicorn.run(api, host="127.0.0.1", port=API_PORT, log_level="warning")
