@@ -81,6 +81,12 @@ export function SettingsDrawer({ settings, models, profiles, mcpServers, onChang
             checked={settings.multiAgent}
             onChange={(v) => onChange({ multiAgent: v })}
           />
+          <Toggle
+            label="Enter to send"
+            description="Off = Ctrl+Enter to send"
+            checked={settings.sendOnEnter}
+            onChange={(v) => onChange({ sendOnEnter: v })}
+          />
         </div>
 
         {/* MCP Servers */}

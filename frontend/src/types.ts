@@ -30,6 +30,7 @@ export interface ChatSettings {
   verbose: boolean;
   multiAgent: boolean;
   activeMcps: string[];
+  sendOnEnter: boolean;
 }
 
 export interface ReadyPayload {

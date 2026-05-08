@@ -21,6 +21,12 @@ _GROQ_MODELS = [
     "groq/llama-3.1-8b-instant",
 ]
 
+_CLAUDE_MODELS = [
+    "claude/claude-sonnet-4-6",
+    "claude/claude-opus-4-7",
+    "claude/claude-haiku-4-5-20251001",
+]
+
 
 def get_ollama_models() -> list[str]:
     try:
@@ -33,7 +39,8 @@ def get_ollama_models() -> list[str]:
 
 def get_all_models() -> list[str]:
     groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
-    return groq + get_ollama_models()
+    claude = _CLAUDE_MODELS if os.getenv("ANTHROPIC_API_KEY") else []
+    return claude + groq + get_ollama_models()
 
 
 def make_draft_tool(send_fn: Callable[[dict], None]):

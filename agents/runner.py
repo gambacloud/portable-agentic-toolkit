@@ -110,7 +110,7 @@ class _OllamaAgent:
         )
 
     def run(self, task: str) -> str:
-        if self.model.startswith("groq/"):
+        if self.model.startswith("groq/") or self.model.startswith("claude/"):
             return self._run_litellm(task)
         return self._run_ollama(task)
 
@@ -166,10 +166,12 @@ class _OllamaAgent:
 
     def _litellm_chat(self, messages: list, tools: list | None):
         import litellm
+        # claude/ prefix → anthropic/ for LiteLLM
+        model = self.model.replace("claude/", "anthropic/", 1) if self.model.startswith("claude/") else self.model
         for attempt in range(4):
             try:
                 return litellm.completion(
-                    model=self.model,
+                    model=model,
                     messages=messages,
                     tools=tools or None,
                 )

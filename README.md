@@ -1,20 +1,23 @@
 # Portable Agentic Toolkit
 
-A fully **local**, privacy-first AI agent workspace.
-All computation — model inference, tool calls, data — stays on your machine.
-No cloud. No telemetry. No API keys required to get started.
+A **local-first, privacy-forward** AI agent workspace.
+Runs entirely on your machine (Ollama) or connects to cloud LLMs (Claude, Groq) via API keys.
 
 ---
 
 ## Features
 
-- **Zero-cloud privacy** — Ollama runs models locally; nothing leaves your machine
+- **Local or cloud LLMs** — Ollama for local inference; Claude (Anthropic) and Groq via API key
 - **One-command setup** — `bootstrap.bat` / `bootstrap.sh` installs everything from scratch
-- **Self-extending tools** — drop a `config.json` into `bin/mcp_servers/` and new tools are auto-loaded on next start
+- **Self-extending tools** — drop a `config.json` into `bin/mcp_servers/` and new tools auto-load on restart
 - **Live agent thinking** — toggle "Show agent thinking" to watch every ReAct step in real time
 - **Human-in-the-loop** — tools marked `requires_confirmation: true` pause and ask before executing
-- **Model switcher** — change the LLM mid-session from the settings panel without restarting
-- **Git exporter** — `scripts/git_export.py` cleans `.venv`, caches, and logs before committing
+- **Multi-agent mode** — hierarchical manager + specialist team, toggled per session
+- **Model switcher** — change the LLM mid-session from the settings panel
+- **Expert profiles** — system-prompt personas stored in DB, selectable per conversation
+- **Agent scheduling** — cron-based scheduled tasks with run history
+- **Send behaviour** — toggle Enter-to-send vs Ctrl+Enter in settings
+- **React UI** — WebSocket-based chat with sidebar history and settings drawer
 
 ---
 
@@ -22,8 +25,9 @@ No cloud. No telemetry. No API keys required to get started.
 
 | Dependency | Version | Notes |
 |------------|---------|-------|
-| [Ollama](https://ollama.com/download) | Latest | Must be installed before bootstrap |
+| [Ollama](https://ollama.com/download) | Latest | Optional if using Claude/Groq only |
 | Python | 3.11+ | Managed automatically by `uv` |
+| Node.js | 18+ | For building the React frontend |
 | RAM | 16 GB+ | 8 GB works for small models (phi3) |
 | Disk | ~10 GB | For models + dependencies |
 
@@ -42,38 +46,60 @@ chmod +x bootstrap.sh
 ./bootstrap.sh
 ```
 
-The script will:
-1. Install `uv` (Python env manager) if missing
-2. Verify Ollama is installed and start it if needed
-3. Create an isolated `.venv` and install all dependencies
-4. Pull the default model (`llama3.2`)
-5. Find a free port (starting at 8000) and open the UI
+The script:
+1. Installs `uv` (Python env manager) if missing
+2. Checks for Node.js and Ollama
+3. Creates an isolated `.venv` and installs all dependencies
+4. Builds the React frontend
+5. Pulls the default model (`llama3.2`)
+6. Starts the server at `http://localhost:8002`
 
 ---
 
 ## Project layout
 
 ```
-├── app.py                  Chainlit UI entry point
+├── main.py                 Server entry point (FastAPI + React static files)
+├── api/
+│   ├── server.py           REST API + WebSocket chat endpoint
+│   └── chat.py             Agent runner logic (shared with scheduler)
 ├── agents/
-│   └── crew.py             CrewAI agent builder (reads config/agents.yaml)
+│   └── runner.py           Ollama / LiteLLM agent + hierarchical crew
 ├── mcp_tools/
-│   └── registry.py         MCP auto-discovery + CrewAI tool wrappers
+│   └── registry.py         MCP auto-discovery + tool wrappers
+├── scheduler/
+│   └── engine.py           APScheduler-based cron runner
+├── db/
+│   ├── database.py         SQLite init + connection helper
+│   └── queries.py          CRUD operations
 ├── utils/
-│   └── ollama_utils.py     Ollama helpers (list models, health check)
-├── bin/
-│   └── mcp_servers/        ← drop MCP server configs here
-│       └── README.md       Schema + examples for config.json
+│   └── logger.py           Structured logger
+├── frontend/               React/Vite UI
+│   └── src/
+│       ├── App.tsx
+│       ├── hooks/useChat.ts  WebSocket state management
+│       └── components/
 ├── config/
 │   └── agents.yaml         Agent role / goal / backstory + default models
-├── scripts/
-│   ├── git_export.py       Clean project for Git distribution
-│   └── pull_models.py      Pull / list Ollama models
+├── bin/
+│   └── mcp_servers/        ← drop MCP server configs here
 ├── bootstrap.bat           Windows setup + launch
 ├── bootstrap.sh            macOS/Linux setup + launch
-├── pyproject.toml          Python dependencies (managed by uv)
 └── .env.example            API key template (copy to .env)
 ```
+
+---
+
+## Cloud LLMs
+
+Add keys to your `.env` file (copy `.env.example` first):
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...   # enables Claude models
+GROQ_API_KEY=gsk_...           # enables Groq models
+```
+
+Claude and Groq models appear automatically in the model selector when their key is present.
 
 ---
 
@@ -97,9 +123,6 @@ Restart the app — tools are discovered automatically at startup.
 ### Popular servers
 
 ```bash
-# File system access
-npx -y @modelcontextprotocol/server-filesystem <directory>
-
 # Web search (needs BRAVE_API_KEY in .env)
 npx -y @modelcontextprotocol/server-brave-search
 
@@ -114,37 +137,18 @@ More at [github.com/modelcontextprotocol/servers](https://github.com/modelcontex
 
 ---
 
-## Customising the agent
-
-Edit `config/agents.yaml` to change the agent's personality, goal, or default models — no Python changes needed:
-
-```yaml
-agents:
-  - name: assistant
-    role: "Senior Data Engineer"
-    goal: "Help build and debug data pipelines"
-    backstory: "You specialise in Fivetran, dbt, and SQL..."
-
-default_models:
-  - llama3.2
-  - phi3
-```
-
----
-
 ## Useful commands
 
 ```bash
-# Start the UI manually
-uv run chainlit run app.py
+# Start manually (after bootstrap)
+uv run python main.py
+
+# Dev mode (hot-reload React)
+cd frontend && npm run dev   # → http://localhost:5173 (proxied to :8002)
 
 # Pull additional models
 uv run python scripts/pull_models.py --model phi3
 uv run python scripts/pull_models.py --list
-
-# Clean before committing
-uv run python scripts/git_export.py --dry-run
-uv run python scripts/git_export.py
 ```
 
 ---
@@ -155,22 +159,20 @@ uv run python scripts/git_export.py
 User browser
     │
     ▼
-Chainlit UI (app.py)          ← async event loop
+React UI (frontend/dist)      ← served as static files by FastAPI
+    │  WebSocket /ws/chat
+    ▼
+FastAPI (api/server.py)       ← port 8002
     │  asyncio.to_thread()
     ▼
-CrewAI Agent (agents/crew.py) ← sync, runs in worker thread
-    │  BaseTool._run()
+Agent Runner (agents/runner.py) ← sync, worker thread
+    │  ollama / litellm
     ▼
-MCP Registry (mcp_tools/)     ← asyncio.run() per tool call
-    │  stdio transport
-    ▼
-MCP Server processes          ← spawned on demand from bin/mcp_servers/
+LLM (Ollama local / Claude / Groq)
     │
     ▼
-Ollama API (localhost:11434)  ← local model inference
+MCP tools (bin/mcp_servers/)  ← spawned stdio processes
 ```
-
-Human-in-the-loop confirmations are bridged back from the worker thread to the Chainlit event loop via `asyncio.run_coroutine_threadsafe`.
 
 ---
 

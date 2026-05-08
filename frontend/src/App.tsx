@@ -124,7 +124,7 @@ export default function App() {
         </div>
 
         {/* Input */}
-        <InputBar onSend={sendMessage} disabled={isThinking || !isConnected} />
+        <InputBar onSend={sendMessage} disabled={isThinking || !isConnected} sendOnEnter={settings.sendOnEnter} />
       </div>
 
       {/* Settings drawer */}

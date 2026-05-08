@@ -3,9 +3,10 @@ import { useRef, useState } from "react";
 interface Props {
   onSend: (content: string) => void;
   disabled?: boolean;
+  sendOnEnter?: boolean;
 }
 
-export function InputBar({ onSend, disabled }: Props) {
+export function InputBar({ onSend, disabled, sendOnEnter = true }: Props) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -20,9 +21,14 @@ export function InputBar({ onSend, disabled }: Props) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submit();
+    if (e.key === "Enter") {
+      if (sendOnEnter && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      } else if (!sendOnEnter && e.ctrlKey) {
+        e.preventDefault();
+        submit();
+      }
     }
   };
 
@@ -31,6 +37,8 @@ export function InputBar({ onSend, disabled }: Props) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
+
+  const hint = sendOnEnter ? "Shift+Enter for newline" : "Ctrl+Enter to send";
 
   return (
     <div className="p-4 border-t border-gray-800">
@@ -41,7 +49,7 @@ export function InputBar({ onSend, disabled }: Props) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
           onInput={onInput}
-          placeholder={disabled ? "Agent is thinking…" : "Message (Enter to send, Shift+Enter for newline)"}
+          placeholder={disabled ? "Agent is thinking…" : `Message (${hint})`}
           disabled={disabled}
           rows={1}
           className="flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-500 outline-none resize-none leading-relaxed py-0.5 disabled:opacity-50"
@@ -58,9 +66,7 @@ export function InputBar({ onSend, disabled }: Props) {
           </svg>
         </button>
       </div>
-      <p className="text-xs text-gray-600 mt-1 text-center">
-        Shift+Enter for newline
-      </p>
+      <p className="text-xs text-gray-600 mt-1 text-center">{hint}</p>
     </div>
   );
 }
