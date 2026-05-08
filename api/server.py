@@ -513,157 +513,158 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
     # ── MCP discovery ─────────────────────────────────────────────────────────
     from mcp_tools.registry import MCPRegistry
     registry = MCPRegistry(MCP_SERVERS_DIR)
-    await registry.discover()
-
-    # ── Bootstrap session data ────────────────────────────────────────────────
-    from api.chat import get_all_models
-    models = get_all_models()
-    profiles = q.list_profiles()
-    mcp_servers = registry.server_names()
-    active_mcps = mcp_servers[:]
-
-    model = models[0] if models else "llama3.2"
-
-    if persist:
-        q.upsert_user(user_id)
-        conv_id, short_id = q.create_conversation(user_id, model)
-    else:
-        short_id = None
-
-    # Notify about scheduled task runs since last session
-    notifications: list[dict] = []
-    if persist:
-        unnotified = q.list_unnotified_runs()
-        if unnotified:
-            q.mark_runs_notified([r["id"] for r in unnotified])
-            notifications = [
-                {
-                    "schedule_name": r["schedule_name"],
-                    "ran_at": r["ran_at"],
-                    "result": (r["result"] or "")[:500],
-                }
-                for r in unnotified
-            ]
-
-    await websocket.send_json({
-        "type": "ready",
-        "conv_id": conv_id,
-        "short_id": short_id,
-        "models": models,
-        "profiles": [{"id": p["id"], "name": p["name"]} for p in profiles],
-        "mcp_servers": mcp_servers,
-        "active_mcps": active_mcps,
-        "model": model,
-        "notifications": notifications,
-    })
-
-    # ── Thread-safe helpers ───────────────────────────────────────────────────
-
-    def send_sync(msg: dict) -> None:
-        """Call from any thread to send a WS message."""
-        asyncio.run_coroutine_threadsafe(websocket.send_json(msg), loop)
-
-    def ask_user_sync(prompt: str, choices: list[str]) -> str:
-        hit_id = str(uuid.uuid4())
-        cf_fut: concurrent.futures.Future = concurrent.futures.Future()
-
-        async def _register_and_send():
-            hitl_futures[hit_id] = cf_fut
-            await websocket.send_json({
-                "type": "hitl_request",
-                "id": hit_id,
-                "prompt": prompt,
-                "choices": choices,
-            })
-
-        asyncio.run_coroutine_threadsafe(_register_and_send(), loop).result()
-        try:
-            return cf_fut.result(timeout=120)
-        except Exception:
-            return choices[-1]
-        finally:
-            hitl_futures.pop(hit_id, None)
-
-    _ALWAYS_SHOW = {"🚀", "✅"}
-
-    def on_agent_step(step_name: str, content: str) -> None:
-        always = any(step_name.startswith(p) for p in _ALWAYS_SHOW)
-        if verbose or always:
-            send_sync({"type": "step", "name": step_name, "content": content})
-
-    # ── Message loop ──────────────────────────────────────────────────────────
     try:
-        while True:
-            data = await websocket.receive_json()
-            msg_type = data.get("type")
+        await registry.discover()
 
-            if msg_type == "settings":
-                model = data.get("model", model)
-                profile_id = data.get("profile_id", profile_id)
-                verbose = data.get("verbose", verbose)
-                multi_agent = data.get("multi_agent", multi_agent)
-                if "active_mcps" in data:
-                    active_mcps = data["active_mcps"]
-                log.info(
-                    "WS settings updated — user=%s model=%s profile=%s verbose=%s mcps=%s",
-                    user_id, model, profile_id, verbose, active_mcps,
-                )
+        # ── Bootstrap session data ────────────────────────────────────────────────
+        from api.chat import get_all_models
+        models = get_all_models()
+        profiles = q.list_profiles()
+        mcp_servers = registry.server_names()
+        active_mcps = mcp_servers[:]
 
-            elif msg_type == "hitl_response":
-                hit_id = data.get("id", "")
-                value = data.get("value", "")
-                cf_fut = hitl_futures.get(hit_id)
-                if cf_fut is not None and not cf_fut.done():
-                    cf_fut.set_result(value)
+        model = models[0] if models else "llama3.2"
 
-            elif msg_type == "message":
-                content = data.get("content", "").strip()
-                if not content:
-                    continue
+        if persist:
+            q.upsert_user(user_id)
+            conv_id, short_id = q.create_conversation(user_id, model)
+        else:
+            short_id = None
 
-                # Inject the current canvas state into the context if the frontend provides it
-                canvas_state = data.get("canvas_state")
-                if canvas_state:
-                    content = f"{content}\n\n[Current Canvas Context]:\n```\n{canvas_state}\n```"
+        # Notify about scheduled task runs since last session
+        notifications: list[dict] = []
+        if persist:
+            unnotified = q.list_unnotified_runs()
+            if unnotified:
+                q.mark_runs_notified([r["id"] for r in unnotified])
+                notifications = [
+                    {
+                        "schedule_name": r["schedule_name"],
+                        "ran_at": r["ran_at"],
+                        "result": (r["result"] or "")[:500],
+                    }
+                    for r in unnotified
+                ]
 
-                log.info("WS message — user=%s model=%s len=%d", user_id, model, len(content))
-                if persist and conv_id:
-                    q.append_message(conv_id, "user", content)
+        await websocket.send_json({
+            "type": "ready",
+            "conv_id": conv_id,
+            "short_id": short_id,
+            "models": models,
+            "profiles": [{"id": p["id"], "name": p["name"]} for p in profiles],
+            "mcp_servers": mcp_servers,
+            "active_mcps": active_mcps,
+            "model": model,
+            "notifications": notifications,
+        })
 
-                if persist:
-                    from db.database import get_conn
-                    with get_conn() as conn:
-                        usage_row = conn.execute("SELECT token_usage, token_limit FROM users WHERE id = ?", (user_id,)).fetchone()
-                        if usage_row:
-                            usage, limit = usage_row[0] or 0, usage_row[1] or 0
-                            if limit > 0 and usage >= limit:
-                                await websocket.send_json({"type": "error", "content": f"Budget exceeded. You have used {usage} out of your {limit} tokens limit."})
-                                continue
+        # ── Thread-safe helpers ───────────────────────────────────────────────────
 
-                def on_token_usage(prompt_tokens: int, completion_tokens: int):
-                    total = prompt_tokens + completion_tokens
-                    if total > 0 and persist:
+        def send_sync(msg: dict) -> None:
+            """Call from any thread to send a WS message."""
+            asyncio.run_coroutine_threadsafe(websocket.send_json(msg), loop)
+
+        def ask_user_sync(prompt: str, choices: list[str]) -> str:
+            hit_id = str(uuid.uuid4())
+            cf_fut: concurrent.futures.Future = concurrent.futures.Future()
+
+            async def _register_and_send():
+                hitl_futures[hit_id] = cf_fut
+                await websocket.send_json({
+                    "type": "hitl_request",
+                    "id": hit_id,
+                    "prompt": prompt,
+                    "choices": choices,
+                })
+
+            asyncio.run_coroutine_threadsafe(_register_and_send(), loop).result()
+            try:
+                return cf_fut.result(timeout=120)
+            except Exception:
+                return choices[-1]
+            finally:
+                hitl_futures.pop(hit_id, None)
+
+        _ALWAYS_SHOW = {"🚀", "✅"}
+
+        def on_agent_step(step_name: str, content: str) -> None:
+            always = any(step_name.startswith(p) for p in _ALWAYS_SHOW)
+            if verbose or always:
+                send_sync({"type": "step", "name": step_name, "content": content})
+
+        # ── Message loop ──────────────────────────────────────────────────────────
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg_type = data.get("type")
+
+                if msg_type == "settings":
+                    model = data.get("model", model)
+                    profile_id = data.get("profile_id", profile_id)
+                    verbose = data.get("verbose", verbose)
+                    multi_agent = data.get("multi_agent", multi_agent)
+                    if "active_mcps" in data:
+                        active_mcps = data["active_mcps"]
+                    log.info(
+                        "WS settings updated — user=%s model=%s profile=%s verbose=%s mcps=%s",
+                        user_id, model, profile_id, verbose, active_mcps,
+                    )
+
+                elif msg_type == "hitl_response":
+                    hit_id = data.get("id", "")
+                    value = data.get("value", "")
+                    cf_fut = hitl_futures.get(hit_id)
+                    if cf_fut is not None and not cf_fut.done():
+                        cf_fut.set_result(value)
+
+                elif msg_type == "message":
+                    content = data.get("content", "").strip()
+                    if not content:
+                        continue
+
+                    # Inject the current canvas state into the context if the frontend provides it
+                    canvas_state = data.get("canvas_state")
+                    if canvas_state:
+                        content = f"{content}\n\n[Current Canvas Context]:\n```\n{canvas_state}\n```"
+
+                    log.info("WS message — user=%s model=%s len=%d", user_id, model, len(content))
+                    if persist and conv_id:
+                        q.append_message(conv_id, "user", content)
+
+                    if persist:
                         from db.database import get_conn
                         with get_conn() as conn:
-                            conn.execute("UPDATE users SET token_usage = COALESCE(token_usage, 0) + ? WHERE id = ?", (total, user_id))
-                        send_sync({"type": "token_update", "added": total})
+                            usage_row = conn.execute("SELECT token_usage, token_limit FROM users WHERE id = ?", (user_id,)).fetchone()
+                            if usage_row:
+                                usage, limit = usage_row[0] or 0, usage_row[1] or 0
+                                if limit > 0 and usage >= limit:
+                                    await websocket.send_json({"type": "error", "content": f"Budget exceeded. You have used {usage} out of your {limit} tokens limit."})
+                                    continue
 
-                from api.chat import run_crew_sync
-                try:
-                    result = await asyncio.to_thread(
-                        run_crew_sync,
-                        content, model, registry,
-                        ask_user_sync, on_agent_step, send_sync,
-                        profile_id, multi_agent, active_mcps, on_token_usage
-                    )
-                    if persist and conv_id:
-                        q.append_message(conv_id, "assistant", str(result))
-                    await websocket.send_json({"type": "response", "content": str(result)})
-                except Exception as exc:
-                    log.error("WS chat error — %s", exc, exc_info=True)
-                    await websocket.send_json({"type": "error", "content": str(exc)})
+                    def on_token_usage(prompt_tokens: int, completion_tokens: int):
+                        total = prompt_tokens + completion_tokens
+                        if total > 0 and persist:
+                            from db.database import get_conn
+                            with get_conn() as conn:
+                                conn.execute("UPDATE users SET token_usage = COALESCE(token_usage, 0) + ? WHERE id = ?", (total, user_id))
+                            send_sync({"type": "token_update", "added": total})
 
-    except WebSocketDisconnect:
-        log.info("WS disconnected — user=%s conv=%s", user_id, conv_id)
+                    from api.chat import run_crew_sync
+                    try:
+                        result = await asyncio.to_thread(
+                            run_crew_sync,
+                            content, model, registry,
+                            ask_user_sync, on_agent_step, send_sync,
+                            profile_id, multi_agent, active_mcps, on_token_usage
+                        )
+                        if persist and conv_id:
+                            q.append_message(conv_id, "assistant", str(result))
+                        await websocket.send_json({"type": "response", "content": str(result)})
+                    except Exception as exc:
+                        log.error("WS chat error — %s", exc, exc_info=True)
+                        await websocket.send_json({"type": "error", "content": str(exc)})
+
+        except WebSocketDisconnect:
+            log.info("WS disconnected — user=%s conv=%s", user_id, conv_id)
     finally:
         await registry.close()

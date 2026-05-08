@@ -63,6 +63,23 @@ a = Analysis(
         # scheduling
         "apscheduler.triggers.cron",
         "apscheduler.schedulers.background",
+        # project modules — many are lazy-imported inside functions at runtime
+        "agents",
+        "agents.runner",
+        "api.chat",
+        "db.database",
+        "db.queries",
+        "mcp_tools.installer",
+        "mcp_tools.registry",
+        "mcp_tools.scheduler_tools",
+        "rag.embedder",
+        "rag.indexer",
+        "rag.retriever",
+        "rag.tool",
+        "scheduler.engine",
+        "utils.logger",
+        "utils.ollama_utils",
+        "utils.paths",
         # misc
         "ollama",
         "mcp",
