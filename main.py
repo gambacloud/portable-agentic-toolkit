@@ -13,9 +13,27 @@ import uvicorn
 
 from utils.paths import app_dir, bundle_dir
 
+_ENV_PATH = app_dir() / ".env"
+_ENV_TEMPLATE = """\
+# Portable Agentic Toolkit — API keys
+# Edit this file and restart the app.
+
+# ANTHROPIC_API_KEY=sk-ant-...
+# GOOGLE_API_KEY=...
+# GEMINI_API_KEY=...
+# GROQ_API_KEY=gsk_...
+# OPENAI_API_KEY=sk-...
+
+# BOT_NAME=Gambabot
+# API_PORT=8002
+"""
+
+if not _ENV_PATH.exists():
+    _ENV_PATH.write_text(_ENV_TEMPLATE, encoding="utf-8")
+
 try:
     from dotenv import load_dotenv
-    load_dotenv(app_dir() / ".env", override=False)
+    load_dotenv(_ENV_PATH, override=False)
 except ImportError:
     pass
 
@@ -28,6 +46,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 API_PORT = int(os.getenv("API_PORT", "8002"))
 FRONTEND_DIST = bundle_dir() / "frontend" / "dist"
 
+log.info("Config: %s", _ENV_PATH)
 init_db()
 log.info("%s starting — DB initialised", BOT_NAME)
 
