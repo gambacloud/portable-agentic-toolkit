@@ -109,8 +109,10 @@ class _OllamaAgent:
             f"You are {role}.\nGoal: {goal}\n\n{backstory}"
         )
 
+    _LITELLM_PREFIXES = ("groq/", "claude/", "gemini/")
+
     def run(self, task: str) -> str:
-        if self.model.startswith("groq/") or self.model.startswith("claude/"):
+        if any(self.model.startswith(p) for p in self._LITELLM_PREFIXES):
             return self._run_litellm(task)
         return self._run_ollama(task)
 

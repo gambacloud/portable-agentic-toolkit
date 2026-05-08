@@ -15,12 +15,13 @@ import uvicorn
 
 from db.database import init_db
 from utils.logger import get_logger
+from utils.paths import bundle_dir
 
 log = get_logger(__name__)
 
 BOT_NAME = os.getenv("BOT_NAME", "Gambabot")
 API_PORT = int(os.getenv("API_PORT", "8002"))
-FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+FRONTEND_DIST = bundle_dir() / "frontend" / "dist"
 
 init_db()
 log.info("%s starting — DB initialised", BOT_NAME)

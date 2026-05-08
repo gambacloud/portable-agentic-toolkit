@@ -32,6 +32,7 @@ packages = ["agents", "mcp_tools", "utils", "db", "api", "scheduler", "rag"]
 [dependency-groups]
 dev = [
     "ruff>=0.4.0",
+    "pyinstaller>=6.0.0",
 ]
 
 [tool.ruff]

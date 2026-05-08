@@ -27,6 +27,12 @@ _CLAUDE_MODELS = [
     "claude/claude-haiku-4-5-20251001",
 ]
 
+_GEMINI_MODELS = [
+    "gemini/gemini-2.0-flash",
+    "gemini/gemini-1.5-pro",
+    "gemini/gemini-1.5-flash",
+]
+
 
 def get_ollama_models() -> list[str]:
     try:
@@ -38,9 +44,10 @@ def get_ollama_models() -> list[str]:
 
 
 def get_all_models() -> list[str]:
-    groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
     claude = _CLAUDE_MODELS if os.getenv("ANTHROPIC_API_KEY") else []
-    return claude + groq + get_ollama_models()
+    gemini = _GEMINI_MODELS if (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")) else []
+    groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
+    return claude + gemini + groq + get_ollama_models()
 
 
 def make_draft_tool(send_fn: Callable[[dict], None]):

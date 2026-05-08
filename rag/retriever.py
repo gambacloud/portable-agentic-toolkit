@@ -4,10 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from utils.logger import get_logger
+from utils.paths import app_dir
 
 log = get_logger(__name__)
 
-_CHROMA_PATH = Path(__file__).parent.parent / "data" / "chroma"
+_CHROMA_PATH = app_dir() / "data" / "chroma"
 _collection = None
 
 

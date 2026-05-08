@@ -3,7 +3,10 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.getenv("DB_PATH", "gambabot.db"))
+from utils.paths import app_dir
+
+_default_db = str(app_dir() / "gambabot.db")
+DB_PATH = Path(os.getenv("DB_PATH", _default_db))
 
 _SCHEMA = """
 PRAGMA journal_mode = WAL;
