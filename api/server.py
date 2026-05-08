@@ -599,6 +599,11 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
                 if not content:
                     continue
 
+                # Inject the current canvas state into the context if the frontend provides it
+                canvas_state = data.get("canvas_state")
+                if canvas_state:
+                    content = f"{content}\n\n[Current Canvas Context]:\n```\n{canvas_state}\n```"
+
                 log.info("WS message — user=%s model=%s len=%d", user_id, model, len(content))
                 if persist and conv_id:
                     q.append_message(conv_id, "user", content)

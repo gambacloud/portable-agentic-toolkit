@@ -5,6 +5,10 @@ Run with: uv run python main.py
 import os
 from pathlib import Path
 
+# Disable ChromaDB telemetry before any chromadb import — prevents posthog ModuleNotFoundError in PyInstaller EXE
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY", "False")
+
 import uvicorn
 
 from utils.paths import app_dir, bundle_dir
