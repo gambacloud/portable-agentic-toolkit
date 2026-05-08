@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ChatSettings, Profile } from "../types";
 
 interface Props {
@@ -9,7 +10,23 @@ interface Props {
   onClose: () => void;
 }
 
+interface RagDoc { source: string; chunks: number; }
+
 export function SettingsDrawer({ settings, models, profiles, mcpServers, onChange, onClose }: Props) {
+  const [ragDocs, setRagDocs] = useState<RagDoc[]>([]);
+
+  useEffect(() => {
+    fetch("/rag/documents")
+      .then((r) => r.json())
+      .then(setRagDocs)
+      .catch(() => {});
+  }, []);
+
+  const deleteDoc = async (source: string) => {
+    await fetch(`/rag/documents/${encodeURIComponent(source)}`, { method: "DELETE" });
+    setRagDocs((prev) => prev.filter((d) => d.source !== source));
+  };
+
   const toggleMcp = (name: string) => {
     const next = settings.activeMcps.includes(name)
       ? settings.activeMcps.filter((m) => m !== name)
@@ -112,6 +129,36 @@ export function SettingsDrawer({ settings, models, profiles, mcpServers, onChang
             </div>
           </div>
         )}
+
+        {/* Knowledge Base */}
+        <div>
+          <label className="text-xs font-medium text-gray-400 mb-2 block">
+            Knowledge Base {ragDocs.length > 0 && <span className="text-gray-600">({ragDocs.length})</span>}
+          </label>
+          {ragDocs.length === 0 ? (
+            <p className="text-xs text-gray-600">No documents indexed. Use the paperclip in chat to upload.</p>
+          ) : (
+            <div className="space-y-1">
+              {ragDocs.map((doc) => (
+                <div key={doc.source} className="flex items-center justify-between gap-2 group">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-300 truncate font-mono">{doc.source}</p>
+                    <p className="text-xs text-gray-600">{doc.chunks} chunks</p>
+                  </div>
+                  <button
+                    onClick={() => deleteDoc(doc.source)}
+                    className="text-gray-600 hover:text-red-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                    title="Remove from knowledge base"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Links */}
         <div className="pt-2 border-t border-gray-800">

@@ -11,11 +11,8 @@ dist/
 build/
 *.egg
 
-# Chainlit runtime files
-.chainlit/config.toml
-.chainlit/translations/
-.files/
-chainlit.db
+# RAG vector store
+data/chroma/
 
 # Logs — keep the dir, ignore the files
 logs/*.log

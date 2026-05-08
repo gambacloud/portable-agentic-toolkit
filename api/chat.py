@@ -112,6 +112,16 @@ def run_crew_sync(
     tool_defs += sched_defs
     tool_map.update(sched_map)
 
+    try:
+        from rag.tool import make_rag_tool
+        rag = make_rag_tool()
+        if rag:
+            rag_def, rag_fn = rag
+            tool_defs.append(rag_def)
+            tool_map["search_knowledge_base"] = rag_fn
+    except Exception as exc:
+        log.debug("RAG tool skipped: %s", exc)
+
     draft_def, draft_fn = make_draft_tool(send_fn)
     tool_defs.append(draft_def)
     tool_map["display_draft_in_ui"] = draft_fn

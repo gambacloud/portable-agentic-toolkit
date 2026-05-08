@@ -12,7 +12,7 @@ from pathlib import Path
 
 import db.queries as q
 from db.database import DB_PATH
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -408,6 +408,52 @@ def wizard_ui():
 @api.get("/schedule-runs", tags=["schedules"])
 def list_schedule_runs(sid: str | None = None, limit: int = 50):
     return q.list_schedule_runs(sid, limit)
+
+
+# ── RAG ───────────────────────────────────────────────────────────────────────
+
+
+@api.post("/rag/upload", tags=["rag"])
+async def rag_upload(file: UploadFile):
+    import shutil
+    import tempfile
+    from rag.indexer import SUPPORTED_SUFFIXES, index_file
+    from rag.retriever import get_collection
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in SUPPORTED_SUFFIXES:
+        raise HTTPException(400, f"Unsupported file type: '{suffix}'. Supported: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        collection = get_collection()
+        # Use original filename for source metadata
+        tmp_path = tmp_path.rename(tmp_path.parent / file.filename)
+        chunks = index_file(tmp_path, collection)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    if chunks == 0:
+        raise HTTPException(422, "No text could be extracted from this file.")
+
+    return {"source": file.filename, "chunks": chunks}
+
+
+@api.get("/rag/documents", tags=["rag"])
+def rag_list_documents():
+    from rag.retriever import list_sources
+    return list_sources()
+
+
+@api.delete("/rag/documents/{source}", status_code=204, tags=["rag"])
+def rag_delete_document(source: str):
+    from rag.retriever import delete_source
+    deleted = delete_source(source)
+    if deleted == 0:
+        raise HTTPException(404, "Document not found in knowledge base")
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
