@@ -22,9 +22,16 @@ def _get_client():
     return _client
 
 
+_BATCH_SIZE = 64
+
+
 def embed(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     log.debug("Embedding %d text(s) via %s model=%s", len(texts), _EMBED_BASE, _EMBED_MODEL)
-    resp = _get_client().embeddings.create(model=_EMBED_MODEL, input=texts)
-    return [e.embedding for e in resp.data]
+    results: list[list[float]] = []
+    for i in range(0, len(texts), _BATCH_SIZE):
+        batch = texts[i : i + _BATCH_SIZE]
+        resp = _get_client().embeddings.create(model=_EMBED_MODEL, input=batch)
+        results.extend(e.embedding for e in resp.data)
+    return results

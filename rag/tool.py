@@ -9,8 +9,8 @@ log = get_logger(__name__)
 def make_rag_tool() -> tuple[dict, callable] | None:
     try:
         from rag.retriever import get_collection
-        collection = get_collection()
-        count = collection.count()
+        # Always re-check count so mid-session uploads are visible
+        count = get_collection().count()
         if count == 0:
             log.debug("RAG collection empty — tool not registered")
             return None

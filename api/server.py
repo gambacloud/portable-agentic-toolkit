@@ -430,9 +430,9 @@ async def rag_upload(file: UploadFile):
 
     try:
         collection = get_collection()
-        # Use original filename for source metadata
-        tmp_path = tmp_path.rename(tmp_path.parent / file.filename)
-        chunks = index_file(tmp_path, collection)
+        named_path = tmp_path.parent / file.filename
+        tmp_path = tmp_path.rename(named_path)
+        chunks = await asyncio.to_thread(index_file, tmp_path, collection)
     finally:
         tmp_path.unlink(missing_ok=True)
 
