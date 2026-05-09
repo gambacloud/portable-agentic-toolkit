@@ -99,7 +99,7 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
           ) : (
             <div className="space-y-1.5 mt-1 px-1">
               {reminders.map((r) => (
-                <ReminderItem key={r.id} reminder={r} />
+                <ReminderItem key={r.id} reminder={r} onDismiss={(id) => setReminders((prev) => prev.filter((x) => x.id !== id))} />
               ))}
             </div>
           )
@@ -127,16 +127,36 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
   );
 }
 
-function ReminderItem({ reminder }: { reminder: any }) {
-  const timeStr = new Date(reminder.remind_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function ReminderItem({ reminder, onDismiss }: { reminder: any; onDismiss: (id: string) => void }) {
+  const remindDate = new Date(reminder.remind_at);
+  const now = new Date();
+  const isToday = remindDate.toDateString() === now.toDateString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const isTomorrow = remindDate.toDateString() === tomorrow.toDateString();
+  const timeStr = remindDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateLabel = isToday ? `Today ${timeStr}` : isTomorrow ? `Tomorrow ${timeStr}` : `${remindDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${timeStr}`;
+
+  const dismiss = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await fetch(`/api/reminders/${reminder.id}/complete`, { method: 'PUT' });
+    onDismiss(reminder.id);
+  };
+
   return (
-    <div className="px-3 py-2 rounded-lg text-xs cursor-pointer bg-gray-900 border border-gray-800 hover:border-indigo-500 hover:bg-gray-800 transition-all text-gray-300 group">
+    <div className="px-3 py-2 rounded-lg text-xs bg-gray-900 border border-gray-800 hover:border-indigo-500 hover:bg-gray-800 transition-all text-gray-300 group">
       <div className="flex items-center justify-between mb-1">
-        <span className="font-semibold text-indigo-400">🕒 {timeStr}</span>
-        <span className="text-gray-600 text-[10px]" title={reminder.session_id}>Chat: {reminder.session_id?.slice(0,6) || "..."}</span>
+        <span className="font-semibold text-indigo-400">🕒 {dateLabel}</span>
+        <button
+          onClick={dismiss}
+          className="text-gray-600 hover:text-red-400 transition-colors text-[10px] opacity-0 group-hover:opacity-100"
+          title="Dismiss"
+        >
+          ✕
+        </button>
       </div>
-      <div className="text-gray-500 truncate group-hover:text-gray-300 transition-colors" title={reminder.message_id}>
-        Message: {reminder.message_id?.slice(0,10) || "..."}
+      <div className="text-gray-500 truncate group-hover:text-gray-300 transition-colors" title={reminder.session_id}>
+        Chat: {reminder.session_id?.slice(0, 8) || "..."}
       </div>
     </div>
   );
