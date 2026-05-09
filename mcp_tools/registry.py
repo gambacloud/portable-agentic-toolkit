@@ -34,6 +34,7 @@ class MCPRegistry:
         self._servers: dict[str, dict] = {}
         self._sessions: dict[str, ClientSession] = {}
         self._stack = AsyncExitStack()
+        self._discovered_names: list[str] = []
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -61,6 +62,8 @@ class MCPRegistry:
             if not config.get("enabled", True):
                 log.debug("Skipping '%s': disabled in config", server_name)
                 continue
+
+            self._discovered_names.append(server_name)
 
             t_start = time.perf_counter()
             try:
@@ -132,7 +135,12 @@ class MCPRegistry:
         return sum(len(s["tools"]) for s in self._servers.values())
 
     def server_names(self) -> list[str]:
+        """Returns names of servers that successfully connected."""
         return list(self._servers.keys())
+
+    def all_server_names(self) -> list[str]:
+        """Returns all discovered server names, including those that failed to connect."""
+        return list(self._discovered_names)
 
     def get_runner_tools(self, ask_user_fn: Optional[Callable] = None, only_servers: Optional[list] = None) -> tuple[list[dict], dict]:
         tool_defs: list[dict] = []

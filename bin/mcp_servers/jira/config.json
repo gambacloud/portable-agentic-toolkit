@@ -1,0 +1,12 @@
+{
+  "name": "jira",
+  "command": "uvx",
+  "args": [
+    "mcp-atlassian",
+    "--transport",
+    "stdio"
+  ],
+  "env": {},
+  "requires_confirmation": true,
+  "enabled": true
+}

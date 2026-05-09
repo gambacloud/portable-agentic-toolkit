@@ -60,3 +60,39 @@ servers:
     description: "Query a local SQLite database"
     requires_confirmation: true
     env_vars: []
+
+  jira:
+    package: "mcp-atlassian"
+    command: "uvx"
+    description: "Read and manage Jira issues, projects, and boards"
+    requires_confirmation: true
+    env_vars:
+      - key: JIRA_URL
+        description: "Jira instance URL (e.g. https://yourorg.atlassian.net)"
+        required: true
+      - key: JIRA_USERNAME
+        description: "Atlassian account email"
+        required: true
+      - key: JIRA_API_TOKEN
+        description: "Atlassian API token — create at https://id.atlassian.com/manage-profile/security/api-tokens"
+        required: true
+
+  github:
+    package: "@modelcontextprotocol/server-github"
+    command: "npx"
+    description: "Read repos, issues, PRs, and code on GitHub"
+    requires_confirmation: true
+    env_vars:
+      - key: GITHUB_TOKEN
+        description: "GitHub personal access token (repo scope)"
+        required: true
+
+  gmail:
+    package: "mcp-gmail"
+    command: "uvx"
+    description: "Read and send Gmail messages"
+    requires_confirmation: true
+    env_vars:
+      - key: GMAIL_CREDENTIALS_FILE
+        description: "Path to OAuth2 credentials JSON file from Google Cloud Console"
+        required: true

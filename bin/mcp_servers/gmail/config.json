@@ -1,0 +1,10 @@
+{
+  "name": "gmail",
+  "command": "uvx",
+  "args": [
+    "mcp-gmail"
+  ],
+  "env": {},
+  "requires_confirmation": true,
+  "enabled": false
+}

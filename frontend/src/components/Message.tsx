@@ -9,8 +9,13 @@ interface Props {
   sessionId?: string | null;
 }
 
+function fmtTime(ts: number | undefined): string | null {
+  if (!ts) return null;
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function Message({ message, sessionId }: Props) {
-  const { role, content, stepName, draftTitle, draftLanguage } = message;
+  const { role, content, stepName, draftTitle, draftLanguage, ts } = message;
 
   if (role === "step") return <StepCard name={stepName ?? "Step"} content={content} />;
   if (role === "draft") return <DraftCard title={draftTitle ?? "Draft"} content={content} language={draftLanguage ?? ""} />;
@@ -18,6 +23,7 @@ export function Message({ message, sessionId }: Props) {
   if (role === "error") return <ErrorMessage content={content} />;
 
   const isUser = role === "user";
+  const timeStr = fmtTime(ts);
 
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} group`}>
@@ -33,19 +39,24 @@ export function Message({ message, sessionId }: Props) {
         </div>
       )}
 
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
-          isUser
-            ? "bg-indigo-600 text-white rounded-tr-sm"
-            : "bg-gray-800 text-gray-100 rounded-tl-sm"
-        }`}
-      >
-        {isUser ? (
-          <span className="whitespace-pre-wrap">{content}</span>
-        ) : (
-          <div className="prose-chat">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
+      <div className={`flex flex-col max-w-[75%] gap-0.5 ${isUser ? "items-end" : "items-start"}`}>
+        <div
+          className={`rounded-2xl px-4 py-2.5 text-sm ${
+            isUser
+              ? "bg-indigo-600 text-white rounded-tr-sm"
+              : "bg-gray-800 text-gray-100 rounded-tl-sm"
+          }`}
+        >
+          {isUser ? (
+            <span className="whitespace-pre-wrap">{content}</span>
+          ) : (
+            <div className="prose-chat">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+        {timeStr && (
+          <span className="text-[10px] text-gray-400 px-1">{timeStr}</span>
         )}
       </div>
 

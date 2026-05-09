@@ -538,8 +538,8 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
         from api.chat import get_all_models
         models = get_all_models()
         profiles = q.list_profiles()
-        mcp_servers = registry.server_names()
-        active_mcps = mcp_servers[:]
+        mcp_servers = registry.all_server_names()
+        active_mcps = registry.server_names()[:]
 
         model = models[0] if models else "llama3.2"
 

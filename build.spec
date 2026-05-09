@@ -21,6 +21,7 @@ a = Analysis(
     ],
     datas=[
         (str(ROOT / "frontend" / "dist"), "frontend/dist"),
+        (str(ROOT / "public"), "public"),
         (str(ROOT / "config"), "config"),
         (str(ROOT / "bin" / "mcp_servers"), "bin/mcp_servers"),
         *collect_data_files("litellm"),

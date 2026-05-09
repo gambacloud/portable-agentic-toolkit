@@ -1,0 +1,11 @@
+{
+  "name": "slack",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-slack"
+  ],
+  "env": {},
+  "requires_confirmation": true,
+  "enabled": true
+}
