@@ -24,6 +24,7 @@ a = Analysis(
         (str(ROOT / "config"), "config"),
         (str(ROOT / "bin" / "mcp_servers"), "bin/mcp_servers"),
         *collect_data_files("litellm"),
+        *collect_data_files("tiktoken"),
     ],
     hiddenimports=[
         # uvicorn
@@ -95,6 +96,14 @@ a = Analysis(
         "docx",
         "openpyxl",
         "sqlite3",
+        # tiktoken — encoding registry is discovered via importlib.metadata plugins
+        "tiktoken",
+        "tiktoken.core",
+        "tiktoken.load",
+        "tiktoken.model",
+        "tiktoken.registry",
+        "tiktoken_ext",
+        "tiktoken_ext.openai_public",
     ],
     hookspath=[],
     runtime_hooks=[],
