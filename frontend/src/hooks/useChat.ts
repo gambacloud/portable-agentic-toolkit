@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatSettings,
   HitlRequest,
+  MessageRole,
   Profile,
   ReadyPayload,
   ServerMessage,
