@@ -26,6 +26,7 @@ interface UseChatReturn {
   updateSettings: (patch: Partial<ChatSettings>) => void;
   sendMessage: (content: string) => void;
   sendHitlResponse: (id: string, value: string) => void;
+  stopGeneration: () => void;
   clearMessages: () => void;
 }
 
@@ -136,6 +137,11 @@ export function useChat(userId = "local"): UseChatReturn {
           setHitl({ id: msg.id, prompt: msg.prompt, choices: msg.choices });
           break;
 
+        case "stopped":
+          setIsThinking(false);
+          setHitl(null);
+          break;
+
         case "error":
           setIsThinking(false);
           setHitl(null);
@@ -200,6 +206,10 @@ export function useChat(userId = "local"): UseChatReturn {
     [send]
   );
 
+  const stopGeneration = useCallback(() => {
+    send({ type: "stop" });
+  }, [send]);
+
   const clearMessages = useCallback(() => setMessages([]), []);
 
   return {
@@ -216,6 +226,7 @@ export function useChat(userId = "local"): UseChatReturn {
     updateSettings,
     sendMessage,
     sendHitlResponse,
+    stopGeneration,
     clearMessages,
   };
 }

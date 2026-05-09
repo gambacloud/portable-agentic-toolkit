@@ -7,6 +7,7 @@ Docs:     http://localhost:8002/docs
 import asyncio
 import concurrent.futures
 import os
+import threading
 import uuid
 from pathlib import Path
 
@@ -577,9 +578,13 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
 
         # ── Thread-safe helpers ───────────────────────────────────────────────────
 
+        _stop_requested = threading.Event()
+        agent_task: asyncio.Task | None = None
+
         def send_sync(msg: dict) -> None:
             """Call from any thread to send a WS message."""
-            asyncio.run_coroutine_threadsafe(websocket.send_json(msg), loop)
+            if not _stop_requested.is_set():
+                asyncio.run_coroutine_threadsafe(websocket.send_json(msg), loop)
 
         def ask_user_sync(prompt: str, choices: list[str]) -> str:
             hit_id = str(uuid.uuid4())
@@ -634,7 +639,14 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
                     if cf_fut is not None and not cf_fut.done():
                         cf_fut.set_result(value)
 
+                elif msg_type == "stop":
+                    if agent_task and not agent_task.done():
+                        agent_task.cancel()
+
                 elif msg_type == "message":
+                    if agent_task and not agent_task.done():
+                        continue
+
                     content = data.get("content", "").strip()
                     if not content:
                         continue
@@ -667,21 +679,42 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
                             send_sync({"type": "token_update", "added": total})
 
                     from api.chat import run_crew_sync
-                    try:
-                        result = await asyncio.to_thread(
-                            run_crew_sync,
-                            content, model, registry,
-                            ask_user_sync, on_agent_step, send_sync,
-                            profile_id, multi_agent, active_mcps, on_token_usage
-                        )
-                        if persist and conv_id:
-                            q.append_message(conv_id, "assistant", str(result))
-                        await websocket.send_json({"type": "response", "content": str(result)})
-                    except Exception as exc:
-                        log.error("WS chat error — %s", exc, exc_info=True)
-                        await websocket.send_json({"type": "error", "content": str(exc)})
+
+                    async def run_agent(
+                        _content=content, _model=model, _profile_id=profile_id,
+                        _multi_agent=multi_agent, _active_mcps=active_mcps,
+                        _on_token_usage=on_token_usage,
+                    ):
+                        nonlocal agent_task
+                        try:
+                            _stop_requested.clear()
+                            result = await asyncio.to_thread(
+                                run_crew_sync,
+                                _content, _model, registry,
+                                ask_user_sync, on_agent_step, send_sync,
+                                _profile_id, _multi_agent, _active_mcps, _on_token_usage
+                            )
+                            if persist and conv_id:
+                                q.append_message(conv_id, "assistant", str(result))
+                            await websocket.send_json({"type": "response", "content": str(result)})
+                        except asyncio.CancelledError:
+                            _stop_requested.set()
+                            for fut in list(hitl_futures.values()):
+                                if not fut.done():
+                                    fut.cancel()
+                            hitl_futures.clear()
+                            await websocket.send_json({"type": "stopped"})
+                        except Exception as exc:
+                            log.error("WS chat error — %s", exc, exc_info=True)
+                            await websocket.send_json({"type": "error", "content": str(exc)})
+                        finally:
+                            agent_task = None
+
+                    agent_task = asyncio.create_task(run_agent())
 
         except WebSocketDisconnect:
             log.info("WS disconnected — user=%s conv=%s", user_id, conv_id)
+            if agent_task and not agent_task.done():
+                agent_task.cancel()
     finally:
         await registry.close()

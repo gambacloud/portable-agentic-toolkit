@@ -25,6 +25,7 @@ export default function App() {
     updateSettings,
     sendMessage,
     sendHitlResponse,
+    stopGeneration,
   } = useChat(USER_ID);
 
   useReminderNotifications();
@@ -129,7 +130,7 @@ export default function App() {
         </div>
 
         {/* Input */}
-        <InputBar onSend={sendMessage} disabled={isThinking || !isConnected} sendOnEnter={settings.sendOnEnter} />
+        <InputBar onSend={sendMessage} onStop={stopGeneration} disabled={isThinking || !isConnected} sendOnEnter={settings.sendOnEnter} />
       </div>
 
       {/* Settings drawer */}

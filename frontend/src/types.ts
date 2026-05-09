@@ -61,6 +61,7 @@ export type ServerMessage =
   | { type: "ready" } & ReadyPayload
   | { type: "step"; name: string; content: string }
   | { type: "response"; content: string }
+  | { type: "stopped" }
   | { type: "draft"; title: string; content: string; language: string }
   | { type: "hitl_request"; id: string; prompt: string; choices: string[] }
   | { type: "error"; content: string };

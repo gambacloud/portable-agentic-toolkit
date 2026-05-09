@@ -2,13 +2,14 @@ import { useRef, useState } from "react";
 
 interface Props {
   onSend: (content: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
   sendOnEnter?: boolean;
 }
 
 const ACCEPTED = ".txt,.md,.pdf,.docx,.csv,.xlsx,.xls";
 
-export function InputBar({ onSend, disabled, sendOnEnter = true }: Props) {
+export function InputBar({ onSend, onStop, disabled, sendOnEnter = true }: Props) {
   const [value, setValue] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
@@ -108,16 +109,29 @@ export function InputBar({ onSend, disabled, sendOnEnter = true }: Props) {
           style={{ minHeight: "24px", maxHeight: "200px" }}
         />
 
-        <button
-          onClick={submit}
-          disabled={disabled || !value.trim()}
-          className="w-8 h-8 flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          aria-label="Send message"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-          </svg>
-        </button>
+        {disabled && onStop ? (
+          <button
+            onClick={onStop}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-600 hover:bg-red-500 transition-colors shrink-0"
+            aria-label="Stop generation"
+            title="Stop"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={disabled || !value.trim()}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            aria-label="Send message"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        )}
       </div>
       <p className="text-xs text-gray-600 mt-1 text-center">{hint}</p>
     </div>
