@@ -25,6 +25,8 @@ a = Analysis(
         (str(ROOT / "bin" / "mcp_servers"), "bin/mcp_servers"),
         *collect_data_files("litellm"),
         *collect_data_files("tiktoken"),
+        *collect_data_files("certifi"),       # SSL CA certs — required for all HTTPS API calls
+        *collect_data_files("markdown_it"),   # presets + port.yaml used at import time
     ],
     hiddenimports=[
         # uvicorn
