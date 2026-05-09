@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { Toaster } from "react-hot-toast";
 import { HitlButtons } from "./components/HitlButtons";
 import { InputBar } from "./components/InputBar";
 import { Message } from "./components/Message";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { Sidebar } from "./components/Sidebar";
 import { useChat } from "./hooks/useChat";
+import { useReminderNotifications } from "./hooks/useReminderNotifications";
 
 const USER_ID = "local";
 
@@ -25,6 +27,8 @@ export default function App() {
     sendHitlResponse,
   } = useChat(USER_ID);
 
+  useReminderNotifications();
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -39,6 +43,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
+      <Toaster position="top-right" />
       {/* Sidebar */}
       <Sidebar currentConvId={convId} onNewChat={handleNewChat} />
 
@@ -94,7 +99,7 @@ export default function App() {
           )}
 
           {messages.map((msg) => (
-            <Message key={msg.id} message={msg} />
+            <Message key={msg.id} message={msg} sessionId={convId} />
           ))}
 
           {/* HITL prompt */}

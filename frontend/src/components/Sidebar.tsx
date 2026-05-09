@@ -9,12 +9,30 @@ interface Props {
 
 export function Sidebar({ currentConvId, onNewChat }: Props) {
   const [convs, setConvs] = useState<Conversation[]>([]);
+  const [activeTab, setActiveTab] = useState<"chats" | "reminders">("chats");
+  const [reminders, setReminders] = useState<any[]>([]);
 
   useEffect(() => {
     fetchConversations()
       .then(setConvs)
       .catch(() => {/* silently ignore */});
   }, [currentConvId]);
+
+  useEffect(() => {
+    if (activeTab !== "reminders") return;
+    const fetchReminders = async () => {
+      try {
+        const res = await fetch("/api/reminders");
+        if (res.ok) {
+          const data = await res.json();
+          setReminders(data);
+        }
+      } catch (err) {}
+    };
+    fetchReminders();
+    const interval = setInterval(fetchReminders, 30000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   return (
     <div className="w-60 bg-gray-950 border-r border-gray-800 flex flex-col shrink-0">
@@ -39,16 +57,52 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
         </button>
       </div>
 
-      {/* Conversations */}
+      {/* Tabs */}
+      <div className="flex px-3 pt-2 gap-1 border-b border-gray-800">
+        <button
+          onClick={() => setActiveTab("chats")}
+          className={`flex-1 pb-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === "chats"
+              ? "border-indigo-500 text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          Chats
+        </button>
+        <button
+          onClick={() => setActiveTab("reminders")}
+          className={`flex-1 pb-2 text-xs font-medium border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
+            activeTab === "reminders"
+              ? "border-indigo-500 text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          Reminders {reminders.length > 0 && <span className="bg-indigo-600 text-white rounded-full px-1.5 py-0.5 text-[9px] leading-none">{reminders.length}</span>}
+        </button>
+      </div>
+
+      {/* List */}
       <div className="flex-1 overflow-y-auto px-2 py-1">
-        {convs.length === 0 ? (
-          <p className="text-xs text-gray-600 px-3 py-2">No conversations yet</p>
+        {activeTab === "chats" ? (
+          convs.length === 0 ? (
+            <p className="text-xs text-gray-600 px-3 py-2">No conversations yet</p>
+          ) : (
+            <div className="space-y-0.5 mt-1">
+              {convs.map((c) => (
+                <ConvItem key={c.id} conv={c} active={c.id === currentConvId} />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="space-y-0.5">
-            {convs.map((c) => (
-              <ConvItem key={c.id} conv={c} active={c.id === currentConvId} />
-            ))}
-          </div>
+          reminders.length === 0 ? (
+            <p className="text-xs text-gray-600 px-3 py-2">No pending reminders</p>
+          ) : (
+            <div className="space-y-1.5 mt-1 px-1">
+              {reminders.map((r) => (
+                <ReminderItem key={r.id} reminder={r} />
+              ))}
+            </div>
+          )
         )}
       </div>
 
@@ -68,6 +122,21 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
             {label}
           </a>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ReminderItem({ reminder }: { reminder: any }) {
+  const timeStr = new Date(reminder.remind_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="px-3 py-2 rounded-lg text-xs cursor-pointer bg-gray-900 border border-gray-800 hover:border-indigo-500 hover:bg-gray-800 transition-all text-gray-300 group">
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-semibold text-indigo-400">🕒 {timeStr}</span>
+        <span className="text-gray-600 text-[10px]" title={reminder.session_id}>Chat: {reminder.session_id?.slice(0,6) || "..."}</span>
+      </div>
+      <div className="text-gray-500 truncate group-hover:text-gray-300 transition-colors" title={reminder.message_id}>
+        Message: {reminder.message_id?.slice(0,10) || "..."}
       </div>
     </div>
   );

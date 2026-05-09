@@ -38,6 +38,9 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
+from api.reminders import router as reminders_router
+api.include_router(reminders_router)
+
 
 @api.on_event("startup")
 def init_db_budget():

@@ -2,12 +2,14 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../types";
+import { RemindMeButton } from "./RemindMeButton";
 
 interface Props {
-  message: ChatMessage;
+  message: ChatMessage & { id?: string };
+  sessionId?: string | null;
 }
 
-export function Message({ message }: Props) {
+export function Message({ message, sessionId }: Props) {
   const { role, content, stepName, draftTitle, draftLanguage } = message;
 
   if (role === "step") return <StepCard name={stepName ?? "Step"} content={content} />;
@@ -18,12 +20,19 @@ export function Message({ message }: Props) {
   const isUser = role === "user";
 
   return (
-    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} group`}>
       {!isUser && (
         <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
           AI
         </div>
       )}
+
+      {isUser && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-start pt-1">
+          <RemindMeButton sessionId={sessionId || "local"} messageId={message.id || "unknown"} />
+        </div>
+      )}
+
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
           isUser
@@ -39,6 +48,13 @@ export function Message({ message }: Props) {
           </div>
         )}
       </div>
+
+      {!isUser && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-start pt-1">
+          <RemindMeButton sessionId={sessionId || "local"} messageId={message.id || "unknown"} />
+        </div>
+      )}
+
       {isUser && (
         <div className="w-7 h-7 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
           U

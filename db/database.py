@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS schedule_runs (
     result        TEXT,
     notified      INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    remind_at  TEXT NOT NULL,
+    note       TEXT,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -120,6 +130,19 @@ def init_db() -> None:
                     name       TEXT NOT NULL,
                     type       TEXT NOT NULL,
                     config     TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+        # Migration: create reminders if missing
+        if "reminders" not in tables:
+            conn.execute("""
+                CREATE TABLE reminders (
+                    id         TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    remind_at  TEXT NOT NULL,
+                    note       TEXT,
+                    status     TEXT NOT NULL DEFAULT 'pending',
                     created_at TEXT NOT NULL DEFAULT (datetime('now'))
                 )
             """)
