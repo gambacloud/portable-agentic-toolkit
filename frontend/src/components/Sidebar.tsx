@@ -39,10 +39,13 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
       {/* Logo */}
       <div className="px-4 py-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center text-xs font-bold">
-            P
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-700 to-rose-900 shadow-sm shadow-rose-900/20 flex items-center justify-center text-xs font-brand font-black text-white ring-1 ring-white/10">
+            GB
           </div>
-          <span className="text-sm font-semibold text-gray-200">PAT</span>
+          <div className="flex items-center text-base tracking-tight select-none cursor-default">
+            <span className="font-brand font-black text-rose-700 tracking-wide">GAMBA</span>
+            <span className="font-mono font-medium text-indigo-100 ml-0.5 opacity-90">BOT</span>
+          </div>
         </div>
       </div>
 

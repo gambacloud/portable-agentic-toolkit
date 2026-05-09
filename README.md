@@ -7,13 +7,15 @@ All computation — including model inference — runs on your machine. No cloud
 
 ## Quick start
 
-1. **Select a model** from the settings panel (⚙️ top right)
-2. Type your request and press **Enter**
-3. Watch the agent reason and call tools in real-time
+1. Run the app (`uv run python main.py` or use `bootstrap.bat`)
+2. Follow the **Quick Start Wizard** to set up your environment, select a model, and create your agent identity.
+3. Manage tasks, chats, and connectors from the new sidebar (DO / SEE / CONFIGURE).
 
 ## Adding MCP Tools
 
-Drop a server config into `bin/mcp_servers/<name>/config.json`:
+You can easily install and manage MCP tools directly from the **Connectors** page in the UI.
+
+Alternatively, for custom servers, drop a config into `bin/mcp_servers/<name>/config.json`:
 
 ```json
 {

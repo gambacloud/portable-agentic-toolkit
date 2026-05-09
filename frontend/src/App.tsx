@@ -53,8 +53,9 @@ export default function App() {
         {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
           <div className="flex items-center gap-3">
-            <h1 className="text-sm font-semibold text-gray-200">
-              Portable Agentic Toolkit
+            <h1 className="flex items-center text-lg tracking-tight select-none cursor-default">
+              <span className="font-brand font-black text-rose-700 tracking-wide">GAMBA</span>
+              <span className="font-mono font-medium text-indigo-100 ml-0.5 opacity-90">BOT</span>
             </h1>
             {shortId && (
               <span className="text-xs text-gray-600 font-mono">#{shortId}</span>
@@ -151,17 +152,18 @@ export default function App() {
 function EmptyState({ model }: { model: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center py-16 select-none">
-      <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-2xl font-bold mb-4">
-        P
+      <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-rose-700 to-rose-900 shadow-lg shadow-rose-900/20 flex items-center justify-center text-3xl font-brand font-black text-white mb-5 ring-1 ring-white/10">
+        GB
       </div>
-      <h2 className="text-lg font-semibold text-gray-300 mb-1">
-        Portable Agentic Toolkit
+      <h2 className="text-2xl flex items-center tracking-tight mb-2">
+        <span className="font-brand font-black text-rose-700 tracking-wide">GAMBA</span>
+        <span className="font-mono font-medium text-indigo-100 ml-0.5 opacity-90">BOT</span>
       </h2>
-      <p className="text-sm text-gray-600 mb-4">
-        Local-first AI agent workspace
+      <p className="text-sm text-gray-500 mb-6 max-w-xs leading-relaxed">
+        Your turnkey ready, local-first AI workspace.
       </p>
-      <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-900 px-3 py-1.5 rounded-full border border-gray-800">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-900/80 px-4 py-2 rounded-full border border-gray-800/60 shadow-inner">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
         {model}
       </div>
     </div>
