@@ -46,6 +46,7 @@ export interface ReadyPayload {
     ran_at: string;
     result: string;
   }>;
+  history?: Array<{ role: string; content: string; ts: string }>;
 }
 
 export interface Conversation {

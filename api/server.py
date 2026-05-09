@@ -512,7 +512,7 @@ MCP_SERVERS_DIR = Path(__file__).parent.parent / "bin" / "mcp_servers"
 
 
 @api.websocket("/ws/chat")
-async def ws_chat(websocket: WebSocket, user_id: str = "local"):
+async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: str | None = None):
     await websocket.accept()
     loop = asyncio.get_event_loop()
 
@@ -543,9 +543,20 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
 
         model = models[0] if models else "llama3.2"
 
+        history: list[dict] = []
         if persist:
             q.upsert_user(user_id)
-            conv_id, short_id = q.create_conversation(user_id, model)
+            if resume_conv_id:
+                existing = q.get_conversation(resume_conv_id)
+                if existing:
+                    conv_id = existing["id"]
+                    short_id = existing["short_id"]
+                    history = existing["messages"]
+                    model = existing.get("model") or model
+                else:
+                    conv_id, short_id = q.create_conversation(user_id, model)
+            else:
+                conv_id, short_id = q.create_conversation(user_id, model)
         else:
             short_id = None
 
@@ -574,6 +585,7 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local"):
             "active_mcps": active_mcps,
             "model": model,
             "notifications": notifications,
+            "history": history,
         })
 
         # ── Thread-safe helpers ───────────────────────────────────────────────────

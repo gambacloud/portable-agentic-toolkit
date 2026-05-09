@@ -33,6 +33,7 @@ interface UseChatReturn {
 export function useChat(userId = "local"): UseChatReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeConvId = useRef(new URLSearchParams(window.location.search).get("conv") ?? undefined);
   const settingsRef = useRef<ChatSettings>({
     model: "llama3.2",
     profileId: null,
@@ -69,7 +70,7 @@ export function useChat(userId = "local"): UseChatReturn {
       wsRef.current.close();
     }
 
-    const ws = new WebSocket(buildWsUrl(userId));
+    const ws = new WebSocket(buildWsUrl(userId, resumeConvId.current));
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -103,6 +104,19 @@ export function useChat(userId = "local"): UseChatReturn {
           };
           settingsRef.current = newSettings;
           setSettings(newSettings);
+
+          // Populate historical messages if resuming a conversation
+          if (p.history && p.history.length > 0) {
+            setMessages(p.history
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .map((m) => ({
+                id: mkId(),
+                role: m.role as MessageRole,
+                content: m.content,
+                ts: new Date(m.ts).getTime(),
+              }))
+            );
+          }
 
           // Inject scheduler notifications as system messages
           for (const n of p.notifications) {

@@ -172,6 +172,7 @@ function ConvItem({ conv, active }: { conv: Conversation; active: boolean }) {
 
   return (
     <div
+      onClick={() => { if (!active) window.location.href = `/?conv=${conv.id}`; }}
       className={`px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors truncate ${
         active
           ? "bg-gray-800 text-gray-100"
