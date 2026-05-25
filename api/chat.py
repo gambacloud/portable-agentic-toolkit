@@ -43,11 +43,23 @@ def get_ollama_models() -> list[str]:
         return []
 
 
+def get_ollama_cloud_models() -> list[str]:
+    try:
+        from utils.ollama_utils import ollama_cloud_client
+        client = ollama_cloud_client()
+        resp = client.list()
+        return [f"ollama_cloud/{m.model}" for m in (resp.models or [])]
+    except Exception as exc:
+        log.debug("Ollama Cloud list() failed: %s", exc)
+        return []
+
+
 def get_all_models() -> list[str]:
     claude = _CLAUDE_MODELS if os.getenv("ANTHROPIC_API_KEY") else []
     gemini = _GEMINI_MODELS if (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")) else []
     groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
-    return claude + gemini + groq + get_ollama_models()
+    ollama_cloud = get_ollama_cloud_models() if os.getenv("OLLAMA_API_KEY") else []
+    return claude + gemini + groq + ollama_cloud + get_ollama_models()
 
 
 def make_draft_tool(send_fn: Callable[[dict], None]):

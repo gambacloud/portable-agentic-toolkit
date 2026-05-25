@@ -1,9 +1,11 @@
 """Helpers for detecting and interacting with the local Ollama service."""
+import os
 import httpx
 import ollama
 
 
 OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_CLOUD_HOST = "https://api.ollama.com"
 
 
 def is_ollama_running() -> bool:
@@ -25,3 +27,9 @@ def list_model_names() -> list[str]:
 
 def model_exists(name: str) -> bool:
     return name in list_model_names()
+
+
+def ollama_cloud_client() -> ollama.Client:
+    key = os.getenv("OLLAMA_API_KEY", "")
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    return ollama.Client(host=OLLAMA_CLOUD_HOST, headers=headers)

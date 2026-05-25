@@ -125,11 +125,14 @@ class _OllamaAgent:
         )
 
     _LITELLM_PREFIXES = ("groq/", "claude/", "gemini/")
+    _OLLAMA_CLOUD_PREFIX = "ollama_cloud/"
 
     def run(self, task: str) -> str:
         prefix = get_user_prompt_prefix()
         if prefix:
             task = f"{prefix}\n\n{task}"
+        if self.model.startswith(self._OLLAMA_CLOUD_PREFIX):
+            return self._run_ollama_cloud(task)
         if any(self.model.startswith(p) for p in self._LITELLM_PREFIXES):
             return self._run_litellm(task)
         return self._run_ollama(task)
@@ -182,6 +185,60 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = ollama.chat(model=self.model, messages=messages)
+            if self.on_token_usage:
+                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+            return resp.message.content or "Unable to complete task within iteration limit."
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    def _run_ollama_cloud(self, task: str) -> str:
+        from utils.ollama_utils import ollama_cloud_client
+        client = ollama_cloud_client()
+        model = self.model.removeprefix(self._OLLAMA_CLOUD_PREFIX)
+        messages: list = [
+            {"role": "system", "content": self._system},
+            {"role": "user", "content": task},
+        ]
+
+        for _ in range(self.max_iter):
+            try:
+                resp = client.chat(
+                    model=model,
+                    messages=messages,
+                    tools=self.tool_defs if self.tool_defs else None,
+                )
+                if self.on_token_usage:
+                    self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+            except Exception as exc:
+                log.error("Ollama Cloud chat error: %s", exc)
+                return f"Error communicating with Ollama Cloud: {exc}"
+
+            msg = resp.message
+            messages.append(msg)
+
+            if not msg.tool_calls:
+                return msg.content or ""
+
+            for tc in msg.tool_calls:
+                fn_name = tc.function.name
+                raw_args = tc.function.arguments or {}
+                parsed = _parse_tool_args(raw_args)
+                if isinstance(parsed, str):
+                    log.warning("Tool call JSON parse failed for %s", fn_name)
+                    if self.on_step:
+                        self.on_step(f"⚠️ {fn_name}", "JSON format error — asking model to retry")
+                    messages.append({"role": "tool", "content": parsed})
+                    continue
+                log.debug("Tool call — %s(%s)", fn_name, str(parsed)[:80])
+                if self.on_step:
+                    self.on_step(f"🔧 {fn_name}", str(parsed)[:120])
+                result = self._call_tool(fn_name, parsed)
+                messages.append({"role": "tool", "content": str(result)})
+
+        log.warning("Max iterations reached — requesting final answer")
+        messages.append({"role": "user", "content": "Please provide your final answer now."})
+        try:
+            resp = client.chat(model=model, messages=messages)
             if self.on_token_usage:
                 self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             return resp.message.content or "Unable to complete task within iteration limit."
