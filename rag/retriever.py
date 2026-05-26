@@ -22,11 +22,22 @@ def get_collection():
     return _collection
 
 
-def search(query: str, top_k: int = 5) -> list[dict]:
+def search(query: str, top_k: int = 5, sources: list[str] | None = None) -> list[dict]:
     from rag.embedder import embed
 
     collection = get_collection()
-    count = collection.count()
+    if collection.count() == 0:
+        return []
+
+    where = {"source": {"$in": sources}} if sources else None
+
+    # Cap n_results to actual matching chunk count to avoid ChromaDB errors
+    if where:
+        matching = collection.get(where=where)
+        count = len(matching["ids"])
+    else:
+        count = collection.count()
+
     if count == 0:
         return []
 
@@ -34,6 +45,7 @@ def search(query: str, top_k: int = 5) -> list[dict]:
     results = collection.query(
         query_embeddings=query_emb,
         n_results=min(top_k, count),
+        where=where,
     )
     out = []
     for doc, meta in zip(results["documents"][0], results["metadatas"][0]):

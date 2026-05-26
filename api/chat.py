@@ -115,6 +115,7 @@ def run_crew_sync(
     multi_agent: bool = False,
     active_mcps: Optional[list[str]] = None,
     on_token_usage: Optional[Callable[[int, int], None]] = None,
+    kb_sources: Optional[list[str]] = None,
 ) -> str:
     tool_defs: list = []
     tool_map: dict = {}
@@ -132,9 +133,26 @@ def run_crew_sync(
     tool_defs += sched_defs
     tool_map.update(sched_map)
 
+    # Auto-inject KB context when sources are selected — don't rely on agent calling the tool
+    if kb_sources:
+        try:
+            from rag.retriever import search
+            rag_hits = search(user_message, top_k=5, sources=kb_sources)
+            if rag_hits:
+                rag_block = "\n\n---\n\n".join(
+                    f"[Source: {r['source']}]\n{r['text']}" for r in rag_hits
+                )
+                user_message = (
+                    f"[Knowledge Base — selected sources: {', '.join(kb_sources)}]\n"
+                    f"{rag_block}\n\n---\n\n{user_message}"
+                )
+                log.debug("Injected %d KB chunks from %s", len(rag_hits), kb_sources)
+        except Exception as exc:
+            log.debug("KB auto-inject failed: %s", exc)
+
     try:
         from rag.tool import make_rag_tool
-        rag = make_rag_tool()
+        rag = make_rag_tool(kb_sources=kb_sources)
         if rag:
             rag_def, rag_fn = rag
             tool_defs.append(rag_def)

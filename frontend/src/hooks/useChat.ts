@@ -42,6 +42,7 @@ export function useChat(userId = "local"): UseChatReturn {
     multiAgent: false,
     activeMcps: [],
     sendOnEnter: true,
+    kbSources: [],
   });
 
   const [isConnected, setIsConnected] = useState(false);
@@ -102,6 +103,7 @@ export function useChat(userId = "local"): UseChatReturn {
             multiAgent: false,
             activeMcps: p.active_mcps,
             sendOnEnter: true,
+            kbSources: [],
           };
           settingsRef.current = newSettings;
           setSettings(newSettings);
@@ -216,6 +218,7 @@ export function useChat(userId = "local"): UseChatReturn {
         verbose: next.verbose,
         multi_agent: next.multiAgent,
         active_mcps: next.activeMcps,
+        kb_sources: next.kbSources,
       });
     },
     [send]

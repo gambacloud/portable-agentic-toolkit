@@ -7,10 +7,13 @@ interface Props {
   sendOnEnter?: boolean;
 }
 
+interface Attachment { name: string; content: string; }
+
 const ACCEPTED = ".txt,.md,.pdf,.docx,.csv,.xlsx,.xls";
 
 export function InputBar({ onSend, onStop, disabled, sendOnEnter = true }: Props) {
   const [value, setValue] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -18,9 +21,14 @@ export function InputBar({ onSend, onStop, disabled, sendOnEnter = true }: Props
 
   const submit = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
+    if ((!trimmed && attachments.length === 0) || disabled) return;
+    let content = attachments
+      .map((a) => `[File: ${a.name}]\n${a.content}`)
+      .join("\n\n---\n\n");
+    if (trimmed) content = content ? `${content}\n\n---\n\n${trimmed}` : trimmed;
+    onSend(content);
     setValue("");
+    setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -46,36 +54,61 @@ export function InputBar({ onSend, onStop, disabled, sendOnEnter = true }: Props
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/rag/upload", { method: "POST", body: form });
+      const res = await fetch("/rag/extract", { method: "POST", body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        setUploadMsg(`Upload failed: ${err.detail ?? res.statusText}`);
+        setUploadMsg(`Error: ${err.detail ?? res.statusText}`);
+        setTimeout(() => setUploadMsg(null), 5000);
       } else {
-        const data = await res.json() as { source: string; chunks: number };
-        setUploadMsg(`✓ Indexed "${data.source}" — ${data.chunks} chunks`);
+        const data = await res.json() as { source: string; content: string };
+        setAttachments((prev) => [...prev, { name: data.source, content: data.content }]);
       }
     } catch (err) {
-      setUploadMsg(`Upload error: ${String(err)}`);
+      setUploadMsg(`Error: ${String(err)}`);
+      setTimeout(() => setUploadMsg(null), 5000);
     } finally {
       setUploading(false);
-      setTimeout(() => setUploadMsg(null), 5000);
     }
   };
 
+  const removeAttachment = (name: string) =>
+    setAttachments((prev) => prev.filter((a) => a.name !== name));
+
   const hint = sendOnEnter ? "Shift+Enter for newline" : "Ctrl+Enter to send";
+  const canSend = (value.trim().length > 0 || attachments.length > 0) && !disabled;
 
   return (
     <div className="px-4 pb-4 pt-2 border-t border-gray-800">
       {uploadMsg && (
-        <p className="text-xs mb-2 px-1 text-gray-400">{uploadMsg}</p>
+        <p className="text-xs mb-2 px-1 text-red-400">{uploadMsg}</p>
+      )}
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {attachments.map((a) => (
+            <span
+              key={a.name}
+              className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-700 rounded text-xs text-gray-300"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3 h-3 text-gray-400 shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              <span className="max-w-[160px] truncate">{a.name}</span>
+              <button
+                onClick={() => removeAttachment(a.name)}
+                className="text-gray-500 hover:text-gray-200 ml-0.5"
+                title="Remove"
+              >×</button>
+            </span>
+          ))}
+        </div>
       )}
       <div className="flex items-end gap-2 bg-gray-800 rounded-xl border border-gray-700 focus-within:border-indigo-500 transition-colors px-3 py-2">
-        {/* Upload button */}
+        {/* Attach file to conversation */}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          title="Upload document to knowledge base"
+          title="Attach file to conversation"
           className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition-colors shrink-0"
         >
           {uploading ? (
@@ -123,7 +156,7 @@ export function InputBar({ onSend, onStop, disabled, sendOnEnter = true }: Props
         ) : (
           <button
             onClick={submit}
-            disabled={disabled || !value.trim()}
+            disabled={!canSend}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
             aria-label="Send message"
           >

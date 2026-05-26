@@ -31,6 +31,7 @@ export interface ChatSettings {
   multiAgent: boolean;
   activeMcps: string[];
   sendOnEnter: boolean;
+  kbSources: string[];
 }
 
 export interface ReadyPayload {
@@ -77,4 +78,5 @@ export type ClientMessage =
       verbose: boolean;
       multi_agent: boolean;
       active_mcps: string[];
+      kb_sources: string[];
     }>;

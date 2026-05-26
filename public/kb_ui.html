@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Base</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --success: #10b981;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg-color);
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.12), transparent 30%),
+      radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.1), transparent 30%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+  .container { max-width: 820px; margin: 0 auto; }
+  h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    background: linear-gradient(135deg, #818cf8, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 1rem; }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed rgba(99, 102, 241, 0.4);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.06);
+  }
+  .upload-zone input { display: none; }
+  .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .upload-label { color: var(--text-muted); font-size: 0.9rem; }
+  .upload-label strong { color: var(--accent); }
+  .upload-hint { font-size: 0.75rem; color: #475569; margin-top: 0.35rem; }
+  /* Progress bar */
+  .progress-bar {
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    margin-top: 1rem;
+    overflow: hidden;
+    display: none;
+  }
+  .progress-bar.active { display: block; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #34d399);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.3s;
+    animation: progress-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes progress-pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.6; }
+  }
+  .upload-msg {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+  }
+  .upload-msg.success { color: var(--success); }
+  .upload-msg.error { color: var(--danger); }
+  /* Doc list */
+  .doc-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.15s;
+  }
+  .doc-row:hover { border-color: rgba(99, 102, 241, 0.3); }
+  .doc-info { min-width: 0; flex: 1; }
+  .doc-name {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .doc-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
+  .doc-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+    white-space: nowrap;
+    shrink: 0;
+  }
+  .btn-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #475569;
+    padding: 0.25rem;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+  }
+  .btn-delete:hover { color: var(--danger); background: rgba(239, 68, 68, 0.08); }
+  .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem 0;
+    font-size: 0.9rem;
+  }
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    gap: 2rem;
+    padding: 1rem 1.25rem;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+  }
+  .stat { display: flex; flex-direction: column; gap: 0.2rem; }
+  .stat-value { font-size: 1.5rem; font-weight: 700; color: #818cf8; }
+  .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-row {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 1.5rem;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Knowledge Base</h1>
+  <p class="subtitle">Org-wide documents indexed for all conversations.</p>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat">
+      <span class="stat-value" id="stat-docs">0</span>
+      <span class="stat-label">Documents</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-chunks">0</span>
+      <span class="stat-label">Total chunks</span>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div class="glass-card">
+    <div class="section-title">Add Document</div>
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.csv,.xlsx,.xls">
+      <div class="upload-icon">📄</div>
+      <div class="upload-label"><strong>Click to upload</strong> or drag & drop</div>
+      <div class="upload-hint">.txt · .md · .pdf · .docx · .csv · .xlsx · .xls</div>
+    </div>
+    <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="upload-msg" id="upload-msg"></div>
+  </div>
+
+  <!-- Document list -->
+  <div class="glass-card">
+    <div class="section-title">Indexed Documents</div>
+    <div class="doc-list" id="doc-list">
+      <div class="loading-row"><span class="spinner"></span>Loading…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const fileInput = document.getElementById('file-input');
+  const uploadZone = document.getElementById('upload-zone');
+  const progressBar = document.getElementById('progress-bar');
+  const progressFill = document.getElementById('progress-fill');
+  const uploadMsg = document.getElementById('upload-msg');
+  const docList = document.getElementById('doc-list');
+  const statsBar = document.getElementById('stats-bar');
+  const statDocs = document.getElementById('stat-docs');
+  const statChunks = document.getElementById('stat-chunks');
+
+  let docs = [];
+
+  async function loadDocs() {
+    try {
+      const res = await fetch('/rag/documents');
+      docs = await res.json();
+      renderDocs();
+    } catch (e) {
+      docList.innerHTML = `<div class="empty-state" style="color:#ef4444">Failed to load documents.</div>`;
+    }
+  }
+
+  function renderDocs() {
+    const totalChunks = docs.reduce((s, d) => s + d.chunks, 0);
+    if (docs.length > 0) {
+      statsBar.style.display = 'flex';
+      statDocs.textContent = docs.length;
+      statChunks.textContent = totalChunks.toLocaleString();
+    } else {
+      statsBar.style.display = 'none';
+    }
+
+    if (docs.length === 0) {
+      docList.innerHTML = '<div class="empty-state">No documents indexed yet. Upload one above.</div>';
+      return;
+    }
+
+    docList.innerHTML = docs.map((d, i) => `
+      <div class="doc-row" id="doc-row-${i}">
+        <div class="doc-info">
+          <div class="doc-name">${escHtml(d.source)}</div>
+          <div class="doc-meta">${d.chunks} chunks</div>
+        </div>
+        <span class="doc-badge">${extOf(d.source)}</span>
+        <button class="btn-delete" onclick="deleteDoc('${escAttr(d.source)}')" title="Remove from knowledge base">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  async function deleteDoc(source) {
+    if (!confirm(`Remove "${source}" from the knowledge base?`)) return;
+    try {
+      const res = await fetch(`/rag/documents/${encodeURIComponent(source)}`, { method: 'DELETE' });
+      if (res.ok || res.status === 204) {
+        docs = docs.filter(d => d.source !== source);
+        renderDocs();
+      } else {
+        alert('Failed to delete document.');
+      }
+    } catch (e) {
+      alert('Error: ' + e);
+    }
+  }
+
+  async function uploadFile(file) {
+    progressBar.classList.add('active');
+    progressFill.style.width = '30%';
+    setMsg('', '');
+
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      progressFill.style.width = '60%';
+      const res = await fetch('/rag/upload', { method: 'POST', body: form });
+      progressFill.style.width = '100%';
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        setMsg('error', `Error: ${err.detail ?? res.statusText}`);
+      } else {
+        const data = await res.json();
+        setMsg('success', `✓ Indexed "${data.source}" — ${data.chunks} chunks`);
+        // Upsert in local list
+        docs = docs.filter(d => d.source !== data.source);
+        docs.push({ source: data.source, chunks: data.chunks });
+        docs.sort((a, b) => a.source.localeCompare(b.source));
+        renderDocs();
+      }
+    } catch (e) {
+      setMsg('error', `Upload error: ${e}`);
+    } finally {
+      setTimeout(() => {
+        progressBar.classList.remove('active');
+        progressFill.style.width = '0%';
+      }, 600);
+    }
+  }
+
+  function setMsg(type, text) {
+    uploadMsg.className = 'upload-msg' + (type ? ' ' + type : '');
+    uploadMsg.textContent = text;
+    if (text) setTimeout(() => { uploadMsg.textContent = ''; uploadMsg.className = 'upload-msg'; }, 6000);
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escAttr(s) { return s.replace(/'/g, "\\'"); }
+  function extOf(s) {
+    const m = s.match(/\.(\w+)$/);
+    return m ? m[1].toUpperCase() : '?';
+  }
+
+  // Click upload
+  uploadZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) { e.target.value = ''; uploadFile(f); }
+  });
+
+  // Drag & drop
+  uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const f = e.dataTransfer?.files?.[0];
+    if (f) uploadFile(f);
+  });
+
+  loadDocs();
+</script>
+</body>
+</html>

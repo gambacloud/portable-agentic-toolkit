@@ -437,6 +437,14 @@ def outputs_ui():
     return "UI File Not Found"
 
 
+@api.get("/kb-ui", response_class=HTMLResponse, tags=["ui"])
+def kb_ui():
+    html_path = Path(__file__).parent.parent / "public" / "kb_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
 @api.get("/wizard-ui", response_class=HTMLResponse, tags=["ui"])
 def wizard_ui():
     html_path = Path(__file__).parent.parent / "public" / "wizard_ui.html"
@@ -451,6 +459,33 @@ def list_schedule_runs(sid: str | None = None, limit: int = 50):
 
 
 # ── RAG ───────────────────────────────────────────────────────────────────────
+
+
+@api.post("/rag/extract", tags=["rag"])
+async def rag_extract(file: UploadFile):
+    import shutil
+    import tempfile
+    from rag.indexer import SUPPORTED_SUFFIXES, parse_file
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in SUPPORTED_SUFFIXES:
+        raise HTTPException(400, f"Unsupported file type: '{suffix}'. Supported: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        named_path = tmp_path.parent / (file.filename or tmp_path.name)
+        tmp_path = tmp_path.rename(named_path)
+        text = await asyncio.to_thread(parse_file, tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    if not text.strip():
+        raise HTTPException(422, "No text could be extracted from this file.")
+
+    return {"source": file.filename, "content": text}
 
 
 @api.post("/rag/upload", tags=["rag"])
@@ -523,6 +558,7 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
     verbose = True
     multi_agent = False
     active_mcps: list[str] | None = None
+    kb_sources: list[str] = []
     conv_id: str | None = None
 
     # Pending HITL responses keyed by request id
@@ -639,6 +675,8 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
                     multi_agent = data.get("multi_agent", multi_agent)
                     if "active_mcps" in data:
                         active_mcps = data["active_mcps"]
+                    if "kb_sources" in data:
+                        kb_sources = data["kb_sources"]
                     log.info(
                         "WS settings updated — user=%s model=%s profile=%s verbose=%s mcps=%s",
                         user_id, model, profile_id, verbose, active_mcps,
@@ -695,7 +733,7 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
                     async def run_agent(
                         _content=content, _model=model, _profile_id=profile_id,
                         _multi_agent=multi_agent, _active_mcps=active_mcps,
-                        _on_token_usage=on_token_usage,
+                        _on_token_usage=on_token_usage, _kb_sources=kb_sources,
                     ):
                         nonlocal agent_task
                         try:
@@ -704,7 +742,8 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
                                 run_crew_sync,
                                 _content, _model, registry,
                                 ask_user_sync, on_agent_step, send_sync,
-                                _profile_id, _multi_agent, _active_mcps, _on_token_usage
+                                _profile_id, _multi_agent, _active_mcps, _on_token_usage,
+                                _kb_sources,
                             )
                             if persist and conv_id:
                                 q.append_message(conv_id, "assistant", str(result))
