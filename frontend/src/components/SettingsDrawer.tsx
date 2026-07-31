@@ -148,6 +148,8 @@ export function SettingsDrawer({ settings, models, profiles, mcpServers, onChang
           <p className="text-xs font-medium text-gray-400 mb-2">Quick Access</p>
           <div className="space-y-1">
             {[
+              ["/wizard-ui", "API Keys & Connectors"],
+              ["/branding-ui", "Document Branding"],
               ["/kb-ui", "Knowledge Base"],
               ["/mcp-ui", "MCP Servers"],
               ["/schedules-ui", "Schedules"],

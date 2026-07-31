@@ -60,14 +60,92 @@ def init_db_budget():
 
 @api.get("/api/settings")
 def get_settings_info():
-    from utils.settings import get_logo_filename, get_system_prompt_extra, get_user_prompt_prefix, SETTINGS_DIR
+    from utils.settings import (
+        get_document_instructions,
+        get_logo_filename,
+        get_system_prompt_extra,
+        get_user_prompt_prefix,
+        SETTINGS_DIR,
+    )
     logo = get_logo_filename()
+    document_instructions = get_document_instructions()
     return {
         "settings_dir": str(SETTINGS_DIR),
         "logo_url": f"/settings-assets/{logo}" if logo else None,
         "has_system_prompt": bool(get_system_prompt_extra()),
         "has_user_prompt": bool(get_user_prompt_prefix()),
+        "has_document_instructions": bool(document_instructions),
+        "document_instructions": document_instructions,
     }
+
+
+class DocumentInstructionsUpdate(BaseModel):
+    text: str
+
+
+@api.post("/api/settings/document-instructions")
+def set_document_instructions(body: DocumentInstructionsUpdate):
+    from utils.settings import save_document_instructions
+    save_document_instructions(body.text)
+    return {"ok": True}
+
+
+_LOGO_SUFFIXES = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
+
+
+@api.post("/api/settings/logo")
+async def upload_logo(file: UploadFile):
+    from utils.settings import save_logo
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _LOGO_SUFFIXES:
+        raise HTTPException(400, f"Unsupported file type: '{suffix}'. Supported: {', '.join(sorted(_LOGO_SUFFIXES))}")
+
+    data = await file.read()
+    save_logo(data, suffix)
+
+    from utils.settings import get_logo_filename
+    logo = get_logo_filename()
+    return {"logo_url": f"/settings-assets/{logo}" if logo else None}
+
+
+def _provider_status_payload() -> dict:
+    from utils.env_config import KNOWN_KEYS, read_env_status
+    from utils.ollama_utils import is_ollama_running, list_model_names
+
+    ollama_up = is_ollama_running()
+    status = read_env_status()
+    return {
+        "providers": {
+            key: {"label": label, "configured": status[key]}
+            for key, label in KNOWN_KEYS.items()
+        },
+        "ollama": {"running": ollama_up, "models": list_model_names() if ollama_up else []},
+    }
+
+
+@api.get("/api/settings/env-keys")
+def get_env_keys_status():
+    return _provider_status_payload()
+
+
+class EnvKeysUpdate(BaseModel):
+    keys: dict[str, str]
+
+
+@api.post("/api/settings/env-keys")
+def set_env_keys(body: EnvKeysUpdate):
+    from utils.env_config import KNOWN_KEYS, write_env_keys
+    from api.chat import get_all_models
+
+    unknown = [k for k in body.keys if k not in KNOWN_KEYS]
+    if unknown:
+        raise HTTPException(400, f"Unknown key(s): {', '.join(unknown)}")
+
+    write_env_keys(body.keys)
+    payload = _provider_status_payload()
+    payload["models"] = get_all_models()
+    return payload
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -364,11 +442,24 @@ def test_output(oid: str):
 
 
 class MCPUpdate(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    env: dict[str, str] | None = None
 
 
 class MCPInstall(BaseModel):
     name: str
+    env: dict[str, str] | None = None
+
+
+def _redact_env(env: dict) -> dict:
+    """Never ship real secret values to the browser — just whether each is set."""
+    return {key: not str(value).startswith("<your ") for key, value in (env or {}).items()}
+
+
+@api.get("/mcp-catalog", tags=["mcps"])
+def get_mcp_catalog():
+    from mcp_tools.installer import _load_catalog
+    return _load_catalog()
 
 
 @api.get("/mcps", tags=["mcps"])
@@ -384,7 +475,8 @@ def list_mcps():
                 import json
                 try:
                     cfg = json.loads(config_path.read_text(encoding="utf-8"))
-                    results.append({"name": d.name, "enabled": cfg.get("enabled", True), "config": cfg})
+                    safe_cfg = {**cfg, "env": _redact_env(cfg.get("env", {}))}
+                    results.append({"name": d.name, "enabled": cfg.get("enabled", True), "config": safe_cfg})
                 except Exception:
                     pass
     return results
@@ -398,9 +490,12 @@ def update_mcp(name: str, body: MCPUpdate):
         raise HTTPException(404, "MCP server not found")
     import json
     cfg = json.loads(config_path.read_text(encoding="utf-8"))
-    cfg["enabled"] = body.enabled
+    if body.enabled is not None:
+        cfg["enabled"] = body.enabled
+    if body.env:
+        cfg.setdefault("env", {}).update({k: v for k, v in body.env.items() if v and v.strip()})
     config_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    return cfg
+    return {**cfg, "env": _redact_env(cfg.get("env", {}))}
 
 
 @api.post("/mcps", tags=["mcps"])
@@ -409,7 +504,7 @@ def install_mcp(body: MCPInstall):
     catalog = _load_catalog()
     def fake_ask(prompt, choices):
         return choices[0] # Auto-approve for UI
-    result = _install(body.name.strip().lower(), catalog, fake_ask)
+    result = _install(body.name.strip().lower(), catalog, fake_ask, body.env)
     return {"result": result}
 
 
@@ -448,6 +543,14 @@ def kb_ui():
 @api.get("/wizard-ui", response_class=HTMLResponse, tags=["ui"])
 def wizard_ui():
     html_path = Path(__file__).parent.parent / "public" / "wizard_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
+@api.get("/branding-ui", response_class=HTMLResponse, tags=["ui"])
+def branding_ui():
+    html_path = Path(__file__).parent.parent / "public" / "branding_ui.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "UI File Not Found"

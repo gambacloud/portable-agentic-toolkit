@@ -13,7 +13,7 @@ All computation — including model inference — runs on your machine. No cloud
 
 ## Adding MCP Tools
 
-You can easily install and manage MCP tools directly from the **Connectors** page in the UI.
+Open **`/wizard-ui`** (or the **API Keys & Connectors** link in the sidebar settings) and paste the credentials for Slack, Microsoft Teams, Jira, GitHub, or Gmail directly into the connector card — no config files to edit. Already-installed connectors can have their credentials added or rotated the same way from `/mcp-ui`.
 
 Alternatively, for custom servers, drop a config into `bin/mcp_servers/<name>/config.json`:
 
@@ -38,12 +38,9 @@ Alternatively, for custom servers, drop a config into `bin/mcp_servers/<name>/co
 | Storage | 10 GB (for models) |
 | Ollama | Running locally |
 
-## Using Groq Models (Cloud)
+## Using Cloud Models (Claude, Gemini, Groq, OpenAI, Ollama Cloud)
 
-If you'd like to use ultra-fast cloud models via Groq instead of running them locally:
-1. Open the `.env` file in the project root.
-2. Add your Groq API key: `GROQ_API_KEY=gsk_...`
-3. Restart the app. The Groq models will now appear in the model selection dropdown!
+Open **`/wizard-ui`**, go to the **AI Model** step, and paste an API key into the provider card you want (get a free Groq key at https://console.groq.com/keys, for example). It's saved and picked up immediately — no restart, no manual `.env` editing.
 
 ## Key files
 

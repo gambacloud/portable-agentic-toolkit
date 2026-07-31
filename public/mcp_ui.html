@@ -204,7 +204,7 @@
 
   <div class="install-section glass-card">
     <div class="mcp-title"><span>📥</span> Install New Server</div>
-    <p class="mcp-details" style="margin-top: 0.5rem;">Enter the name of a server from the catalog (e.g. <code>server-filesystem</code>, <code>server-brave-search</code>).</p>
+    <p class="mcp-details" style="margin-top: 0.5rem;">Enter a name from the catalog (e.g. <code>slack</code>, <code>teams</code>, <code>jira</code>, <code>github</code>, <code>gmail</code>, <code>brave_search</code>) — or any other service name to search npm/PyPI automatically. Add credentials in the card below after installing.</p>
     <form class="install-form" id="install-form">
       <input type="text" id="install-name" placeholder="Server name..." required>
       <button type="submit" id="install-btn">Install</button>
@@ -214,23 +214,35 @@
 </div>
 
 <script>
+  let mcpCatalog = {};
+
   async function fetchMCPs() {
     document.getElementById('loading').style.display = 'block';
     document.getElementById('mcp-list').innerHTML = '';
     try {
-      const res = await fetch('/mcps');
-      const mcps = await res.json();
+      const [mcpsRes, catalogRes] = await Promise.all([fetch('/mcps'), fetch('/mcp-catalog')]);
+      const mcps = await mcpsRes.json();
+      mcpCatalog = await catalogRes.json().catch(() => ({}));
       document.getElementById('loading').style.display = 'none';
-      
+
       if (mcps.length === 0) {
         document.getElementById('mcp-list').innerHTML = '<div class="glass-card"><p class="mcp-details">No MCP servers installed yet.</p></div>';
         return;
       }
-      
+
       mcps.forEach(mcp => {
         const command = mcp.config.command + ' ' + (mcp.config.args ? mcp.config.args.join(' ') : '');
         const requiresConfirm = mcp.config.requires_confirmation ? 'Yes' : 'No';
-        
+
+        // Merge keys already in config.env with keys the catalog says this server expects,
+        // so a server installed before credentials existed still gets fields to fill in.
+        const envMap = { ...(mcp.config.env || {}) };
+        const catalogVars = (mcpCatalog[mcp.name] && mcpCatalog[mcp.name].env_vars) || [];
+        catalogVars.forEach((v) => {
+          if (!(v.key in envMap)) envMap[v.key] = false;
+        });
+        const envKeys = Object.keys(envMap);
+
         const card = document.createElement('div');
         card.className = 'glass-card';
         card.innerHTML = `
@@ -245,12 +257,59 @@
             <p><strong>Command:</strong> <code>${command}</code></p>
             <p><strong>Requires Confirmation:</strong> ${requiresConfirm}</p>
           </div>
+          ${envKeys.length ? renderEnvFields(mcp.name, envMap) : ''}
         `;
         document.getElementById('mcp-list').appendChild(card);
       });
     } catch (err) {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('mcp-list').innerHTML = '<p style="color:var(--danger)">Error loading MCPs.</p>';
+    }
+  }
+
+  function renderEnvFields(name, envMap) {
+    const rows = Object.entries(envMap).map(([key, configured]) => `
+      <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.4rem;">
+        <span style="font-size:0.85rem; width:180px; flex-shrink:0; color:var(--text-muted);">
+          ${key} ${configured ? '✅' : '⚠️ not set'}
+        </span>
+        <input type="password" id="envfield-${name}-${key}"
+               placeholder="${configured ? 'change value...' : 'paste value...'}"
+               style="flex-grow:1; padding:0.5rem 0.75rem; font-size:0.85rem;">
+      </div>`).join('');
+    return `
+      <div class="mcp-details" style="margin-top:1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin-bottom:0.5rem;"><strong>Credentials</strong></p>
+        ${rows}
+        <button type="button" style="font-size:0.85rem; padding:0.5rem 1rem; margin-top:0.25rem;"
+                id="envsave-${name}" onclick="saveEnvFields('${name}', ${JSON.stringify(Object.keys(envMap)).replace(/"/g, '&quot;')})">
+          Save credentials
+        </button>
+      </div>`;
+  }
+
+  async function saveEnvFields(name, keys) {
+    const btn = document.getElementById('envsave-' + name);
+    const env = {};
+    keys.forEach((key) => {
+      const el = document.getElementById(`envfield-${name}-${key}`);
+      if (el && el.value.trim()) env[key] = el.value.trim();
+    });
+    if (Object.keys(env).length === 0) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;"></div>';
+    try {
+      await fetch('/mcps/' + name, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env })
+      });
+      fetchMCPs();
+    } catch (err) {
+      alert('Failed to save credentials');
+      btn.disabled = false;
+      btn.innerHTML = 'Save credentials';
     }
   }
 

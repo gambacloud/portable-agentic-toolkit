@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document Branding</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --success: #10b981;
+  }
+  body {
+    background: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                      radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  .container {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  p.subtitle {
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+  h2 {
+    font-size: 1.15rem;
+    margin: 0 0 0.5rem 0;
+  }
+  .hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.5;
+  }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .logo-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .logo-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .logo-preview span {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-align: center;
+  }
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+    min-height: 160px;
+    line-height: 1.5;
+  }
+  textarea:focus {
+    border-color: var(--accent);
+  }
+  input[type="file"] {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+  .save-msg {
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    min-height: 1.2em;
+  }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎨 Document Branding</h1>
+  <p class="subtitle">
+    These settings only apply when the agent generates a draft, document, or summary in chat —
+    they don't change how it answers regular questions.
+  </p>
+
+  <div class="glass-card">
+    <h2>Logo</h2>
+    <p class="hint">Shown on generated drafts. PNG, JPG, SVG, or WebP.</p>
+    <div class="logo-row">
+      <div class="logo-preview" id="logo-preview"><span>No logo</span></div>
+      <div>
+        <input type="file" id="logo-file" accept=".png,.jpg,.jpeg,.svg,.webp">
+        <div class="save-msg" id="logo-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="glass-card">
+    <h2>Content Instructions</h2>
+    <p class="hint">Tone, required structure, a footer/disclaimer to include, how to describe brand colors in words — anything the agent should follow when writing a document.</p>
+    <textarea id="instructions" placeholder="e.g. Sign off every document with: Acme Inc. — Confidential."></textarea>
+    <div class="actions">
+      <button id="save-btn" onclick="saveInstructions()">Save</button>
+    </div>
+    <div class="save-msg" id="instructions-msg"></div>
+  </div>
+</div>
+
+<script>
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      renderLogo(data.logo_url);
+      document.getElementById('instructions').value = data.document_instructions || '';
+    } catch (e) {
+      document.getElementById('instructions-msg').textContent = 'Could not load current settings.';
+      document.getElementById('instructions-msg').style.color = 'var(--danger)';
+    }
+  }
+
+  function renderLogo(url) {
+    const preview = document.getElementById('logo-preview');
+    preview.innerHTML = url
+      ? `<img src="${url}?t=${Date.now()}" alt="Logo">`
+      : '<span>No logo</span>';
+  }
+
+  document.getElementById('logo-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('logo-msg');
+    msg.textContent = 'Uploading...';
+    msg.style.color = 'var(--text-muted)';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/settings/logo', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+      renderLogo(data.logo_url);
+      msg.textContent = 'Logo saved.';
+      msg.style.color = 'var(--success)';
+    } catch (err) {
+      msg.textContent = err.message || 'Upload failed.';
+      msg.style.color = 'var(--danger)';
+    }
+  });
+
+  async function saveInstructions() {
+    const btn = document.getElementById('save-btn');
+    const msg = document.getElementById('instructions-msg');
+    const text = document.getElementById('instructions').value;
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Saving...';
+    msg.textContent = '';
+
+    try {
+      const res = await fetch('/api/settings/document-instructions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) throw new Error('Save failed');
+      msg.textContent = 'Saved — applies to the next draft generated in chat.';
+      msg.style.color = 'var(--success)';
+    } catch (err) {
+      msg.textContent = 'Failed to save.';
+      msg.style.color = 'var(--danger)';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Save';
+    }
+  }
+
+  loadSettings();
+</script>
+</body>
+</html>

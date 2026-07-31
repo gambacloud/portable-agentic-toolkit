@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../types";
@@ -100,6 +100,14 @@ function StepCard({ name, content }: { name: string; content: string }) {
 
 function DraftCard({ title, content, language }: { title: string; content: string; language: string }) {
   const [copied, setCopied] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => setLogoUrl(d.logo_url ?? null))
+      .catch(() => {});
+  }, []);
 
   const copy = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -112,7 +120,10 @@ function DraftCard({ title, content, language }: { title: string; content: strin
     <div className="flex justify-start w-full">
       <div className="w-full max-w-[90%] bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-          <span className="text-xs font-semibold text-gray-300">{title}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {logoUrl && <img src={logoUrl} alt="" className="w-4 h-4 object-contain shrink-0" />}
+            <span className="text-xs font-semibold text-gray-300 truncate">{title}</span>
+          </div>
           <div className="flex items-center gap-2">
             {language && (
               <span className="text-xs text-gray-500 font-mono">{language}</span>

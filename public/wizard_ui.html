@@ -301,25 +301,24 @@
     <!-- STEP 2: MODEL -->
     <div class="step-content" id="step-2">
       <h2>AI Model</h2>
-      <p style="color:var(--text-muted); margin-bottom:1.5rem;">To run agents, you need an LLM. We support local models via Ollama or fast cloud models via Groq.</p>
-      
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">To run agents, you need at least one LLM. Use a local Ollama model (private, free) or paste a cloud provider key below — it's saved instantly, no restart needed.</p>
+
       <div id="model-status" class="status-item" style="margin-bottom: 1.5rem;">
          <!-- Populated dynamically -->
       </div>
-      
-      <div id="model-instructions" style="display:none; background:rgba(0,0,0,0.2); padding:1.5rem; border-radius:8px;">
-        <h4 style="margin-top:0;">Option A: Local Model (Ollama)</h4>
+
+      <div id="model-instructions" style="display:none; background:rgba(0,0,0,0.2); padding:1.5rem; border-radius:8px; margin-bottom:1.5rem;">
+        <h4 style="margin-top:0;">Local model (Ollama)</h4>
         <p>If you have Ollama installed, open your terminal and run:</p>
         <code class="big-code">ollama pull llama3.2</code>
         <p style="margin-bottom:0; font-size:0.9rem; color:var(--text-muted);">This takes a minute or two depending on your internet connection.</p>
-        
-        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:1.5rem 0;">
-        
-        <h4 style="margin-top:0;">Option B: Cloud Model (Groq)</h4>
-        <p>Edit your <code>.env</code> file in the project directory and add your API key:</p>
-        <code>GROQ_API_KEY=gsk_your_api_key_here</code>
       </div>
-      
+
+      <h4 style="margin-bottom:0.75rem; color:var(--text-muted);">Cloud providers</h4>
+      <div id="provider-cards">
+        <div style="text-align:center; padding:1rem;"><div class="spinner"></div></div>
+      </div>
+
       <div class="btn-group">
         <button class="secondary" onclick="prevStep()">⬅ Back</button>
         <button onclick="nextStep()">Next: Create Identity ➔</button>
@@ -357,26 +356,12 @@
     <!-- STEP 4: CONNECTORS -->
     <div class="step-content" id="step-4">
       <h2>Connectors (MCPs)</h2>
-      <p style="color:var(--text-muted); margin-bottom:1.5rem;">Connectors (Model Context Protocol servers) give your agent real-world capabilities. Install a couple of basic ones to get started.</p>
-      
-      <div class="status-item">
-        <div class="status-icon">🌐</div>
-        <div class="status-text">
-          <h4>Brave Search</h4>
-          <p>Allows the agent to search the internet for real-time information.</p>
-        </div>
-        <button id="btn-install-brave" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installMcp('server-brave-search', 'btn-install-brave')">Install</button>
+      <p style="color:var(--text-muted); margin-bottom:1.5rem;">Connectors (Model Context Protocol servers) give your agent real-world capabilities. Paste any credentials it needs and install — no config files to hand-edit.</p>
+
+      <div id="connector-cards">
+        <div style="text-align:center; padding:1rem;"><div class="spinner"></div></div>
       </div>
-      
-      <div class="status-item">
-        <div class="status-icon">📁</div>
-        <div class="status-text">
-          <h4>Filesystem</h4>
-          <p>Allows the agent to read and write files on your local machine.</p>
-        </div>
-        <button id="btn-install-fs" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installMcp('server-filesystem', 'btn-install-fs')">Install</button>
-      </div>
-      
+
       <div class="btn-group">
         <button class="secondary" onclick="prevStep()">⬅ Back</button>
         <button onclick="nextStep()">Skip / Next ➔</button>
@@ -455,6 +440,80 @@
     }
   }
 
+  const PROVIDER_KEY_HELP = {
+    ANTHROPIC_API_KEY: { url: 'https://console.anthropic.com/settings/keys', hint: 'sk-ant-...' },
+    GOOGLE_API_KEY: { url: 'https://aistudio.google.com/apikey', hint: 'AIza...' },
+    GROQ_API_KEY: { url: 'https://console.groq.com/keys', hint: 'gsk_...' },
+    OPENAI_API_KEY: { url: 'https://platform.openai.com/api-keys', hint: 'sk-...' },
+    OLLAMA_API_KEY: { url: 'https://ollama.com/settings/keys', hint: 'cloud API key' },
+  };
+
+  async function loadProviderCards() {
+    try {
+      const res = await fetch('/api/settings/env-keys');
+      const data = await res.json();
+      renderProviderCards(data.providers);
+    } catch (e) {
+      document.getElementById('provider-cards').innerHTML =
+        '<p style="color:var(--text-muted);">Could not load provider status — is the API running?</p>';
+    }
+  }
+
+  function renderProviderCards(providers) {
+    const container = document.getElementById('provider-cards');
+    container.innerHTML = Object.entries(providers).map(([key, info]) => {
+      const help = PROVIDER_KEY_HELP[key] || {};
+      if (info.configured) {
+        return `
+          <div class="status-item">
+            <div class="status-icon">✅</div>
+            <div class="status-text"><h4>${info.label}</h4><p>Configured and ready to use.</p></div>
+            <div class="status-badge bg-success">Ready</div>
+          </div>`;
+      }
+      const linkHtml = help.url
+        ? `Get a key at <a href="${help.url}" target="_blank" rel="noreferrer" style="color:var(--accent);">${help.url}</a>`
+        : 'Paste your API key below.';
+      return `
+        <div class="status-item" style="align-items:flex-start;">
+          <div class="status-icon">🔑</div>
+          <div class="status-text" style="flex-grow:1;">
+            <h4>${info.label}</h4>
+            <p>${linkHtml}</p>
+            <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+              <input type="password" id="key-${key}" placeholder="${help.hint || 'paste key here'}"
+                     style="flex-grow:1; padding:0.5rem 0.75rem; font-size:0.9rem;"
+                     onkeydown="if(event.key==='Enter') saveProviderKey('${key}')">
+              <button style="padding:0.5rem 1rem; font-size:0.9rem;" onclick="saveProviderKey('${key}')" id="btn-${key}">Save</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function saveProviderKey(key) {
+    const input = document.getElementById('key-' + key);
+    const btn = document.getElementById('btn-' + key);
+    const value = input.value.trim();
+    if (!value) return;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await fetch('/api/settings/env-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: { [key]: value } })
+      });
+      if (!res.ok) throw new Error('save failed');
+      const data = await res.json();
+      renderProviderCards(data.providers);
+    } catch (e) {
+      btn.disabled = false;
+      btn.innerHTML = 'Save';
+      alert('Failed to save key — check the API is running and try again.');
+    }
+  }
+
   function setupModelStep() {
     const statusDiv = document.getElementById('model-status');
     const instDiv = document.getElementById('model-instructions');
@@ -511,16 +570,71 @@
     }
   }
 
-  async function installMcp(name, btnId) {
-    const btn = document.getElementById(btnId);
+  const CONNECTOR_ICONS = {
+    brave_search: '🌐', slack: '💬', teams: '👥', jira: '📋', github: '🐙', gmail: '✉️'
+  };
+  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail'];
+  let mcpCatalog = {};
+
+  function titleCase(name) {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  async function loadConnectorCards() {
+    try {
+      const res = await fetch('/mcp-catalog');
+      mcpCatalog = await res.json();
+      renderConnectorCards();
+    } catch (e) {
+      document.getElementById('connector-cards').innerHTML =
+        '<p style="color:var(--text-muted);">Could not load connector catalog — is the API running?</p>';
+    }
+  }
+
+  function renderConnectorCards() {
+    const container = document.getElementById('connector-cards');
+    container.innerHTML = WIZARD_CONNECTORS.filter((name) => mcpCatalog[name]).map((name) => {
+      const entry = mcpCatalog[name];
+      const icon = CONNECTOR_ICONS[name] || '🔌';
+      const fields = (entry.env_vars || []).map((v) => `
+        <div style="margin-bottom:0.5rem;">
+          <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.25rem;">${v.key}</label>
+          <input type="password" id="mcpfield-${name}-${v.key}" placeholder="${v.description}"
+                 style="width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; font-size:0.9rem;">
+        </div>`).join('');
+      const noteHtml = entry.setup_note
+        ? `<p style="font-size:0.85rem; color:var(--warning); margin-top:0.5rem;">⚠️ ${entry.setup_note}</p>`
+        : '';
+      return `
+        <div class="glass-card" style="padding:1.25rem; margin-bottom:1rem;">
+          <div class="status-item" style="background:none; padding:0; margin-bottom:${fields ? '0.75rem' : '0'};">
+            <div class="status-icon">${icon}</div>
+            <div class="status-text"><h4>${titleCase(name)}</h4><p>${entry.description}</p></div>
+            <button id="btn-install-${name}" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installConnector('${name}')">Install</button>
+          </div>
+          ${fields}
+          ${noteHtml}
+        </div>`;
+    }).join('');
+  }
+
+  async function installConnector(name) {
+    const btn = document.getElementById('btn-install-' + name);
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div>';
-    
+
+    const entry = mcpCatalog[name] || {};
+    const env = {};
+    (entry.env_vars || []).forEach((v) => {
+      const el = document.getElementById(`mcpfield-${name}-${v.key}`);
+      if (el && el.value.trim()) env[v.key] = el.value.trim();
+    });
+
     try {
       const res = await fetch('/mcps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name, env })
       });
       if (res.ok) {
         btn.innerHTML = 'Installed ✓';
@@ -528,10 +642,12 @@
         btn.style.borderColor = 'var(--success)';
       } else {
         btn.innerHTML = 'Failed';
+        btn.disabled = false;
         btn.style.borderColor = 'var(--danger)';
       }
     } catch (e) {
       btn.innerHTML = 'Error';
+      btn.disabled = false;
     }
   }
 
@@ -568,13 +684,14 @@
   }
 
   function startNewAgent() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const chatPort = urlParams.get('chat_port') || '8000';
-    window.location.href = window.location.protocol + '//' + window.location.hostname + ':' + chatPort + '/';
+    // The wizard is served by the same app/port as the chat UI — just go to "/".
+    window.location.href = window.location.origin + '/';
   }
 
   // Initialize
   detectSystem();
+  loadProviderCards();
+  loadConnectorCards();
 </script>
 </body>
 </html>

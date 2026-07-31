@@ -25,15 +25,6 @@ servers:
         description: "Brave Search API key — get one free at https://api.search.brave.com"
         required: true
 
-  github:
-    package: "@modelcontextprotocol/server-github"
-    description: "Read GitHub repos, issues, PRs, and code"
-    requires_confirmation: true
-    env_vars:
-      - key: GITHUB_TOKEN
-        description: "GitHub personal access token (repo scope)"
-        required: true
-
   slack:
     package: "@modelcontextprotocol/server-slack"
     description: "Post messages and read channels in Slack"
@@ -96,3 +87,14 @@ servers:
       - key: GMAIL_CREDENTIALS_FILE
         description: "Path to OAuth2 credentials JSON file from Google Cloud Console"
         required: true
+
+  teams:
+    package: "@floriscornel/teams-mcp"
+    command: "npx"
+    description: "Read and send Microsoft Teams messages via Microsoft Graph"
+    requires_confirmation: true
+    env_vars: []
+    setup_note: >-
+      One-time login required before this works: open a terminal and run
+      `npx @floriscornel/teams-mcp@latest authenticate`, then sign in with your
+      Microsoft account. No API key needed — the login token is cached locally.

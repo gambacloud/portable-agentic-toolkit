@@ -58,7 +58,7 @@ def make_runner_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
 
-def _install(server_name: str, catalog: dict, ask_user_fn: Callable) -> str:
+def _install(server_name: str, catalog: dict, ask_user_fn: Callable, env_values: dict | None = None) -> str:
     config_path = _SERVERS_DIR / server_name / "config.json"
 
     if config_path.exists():
@@ -71,7 +71,7 @@ def _install(server_name: str, catalog: dict, ask_user_fn: Callable) -> str:
         return f"'{server_name}' was disabled — re-enabled. Restart the server to load it."
 
     if server_name in catalog:
-        return _install_from_catalog(server_name, catalog[server_name], config_path, ask_user_fn)
+        return _install_from_catalog(server_name, catalog[server_name], config_path, ask_user_fn, env_values)
 
     # Not in catalog — search registries
     log.info("'%s' not in catalog, searching npm/PyPI...", server_name)
@@ -113,7 +113,13 @@ def _install(server_name: str, catalog: dict, ask_user_fn: Callable) -> str:
     )
 
 
-def _install_from_catalog(server_name: str, entry: dict, config_path: Path, ask_user_fn: Callable) -> str:
+def _install_from_catalog(
+    server_name: str,
+    entry: dict,
+    config_path: Path,
+    ask_user_fn: Callable,
+    env_values: dict | None = None,
+) -> str:
     decision = ask_user_fn(
         f"I'll install the **{server_name}** MCP server ({entry['description']}).\n"
         f"This creates `bin/mcp_servers/{server_name}/config.json`. Proceed?",
@@ -122,12 +128,15 @@ def _install_from_catalog(server_name: str, entry: dict, config_path: Path, ask_
     if decision == "Cancel":
         return f"The user declined to install '{server_name}'. Do not retry — report this outcome as your final answer."
 
+    env_values = env_values or {}
     env_section = {}
     instructions = []
     for var in entry.get("env_vars", []):
-        env_section[var["key"]] = f"<your {var['description']}>"
-        if var.get("required"):
-            instructions.append(f"  • **{var['key']}** — {var['description']}")
+        key = var["key"]
+        supplied = env_values.get(key, "").strip()
+        env_section[key] = supplied if supplied else f"<your {var['description']}>"
+        if var.get("required") and not supplied:
+            instructions.append(f"  • **{key}** — {var['description']}")
 
     command = entry.get("command", "npx")
     args = [entry["package"]] if command != "npx" else ["-y", entry["package"]]
@@ -143,13 +152,16 @@ def _install_from_catalog(server_name: str, entry: dict, config_path: Path, ask_
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     log.info("Installed MCP server from catalog: %s", server_name)
 
+    setup_note = entry.get("setup_note", "")
+    note_suffix = f"\n\n{setup_note}" if setup_note else ""
+
     if instructions:
         steps = "\n".join(instructions)
         return (
             f"✅ **{server_name}** config created.\n\n"
-            f"Add these to your `.env` file, then restart:\n{steps}"
+            f"Add these to your `.env` file, then restart:\n{steps}{note_suffix}"
         )
-    return f"✅ **{server_name}** installed. Restart the server to activate it."
+    return f"✅ **{server_name}** installed. Restart the server to activate it.{note_suffix}"
 
 
 # ── Registry search ────────────────────────────────────────────────────────────

@@ -67,15 +67,22 @@ def make_draft_tool(send_fn: Callable[[dict], None]):
     send_fn: thread-safe callable that sends a WS message dict to the client.
     In WS context this calls asyncio.run_coroutine_threadsafe under the hood.
     """
+    from utils.settings import get_document_instructions
+
+    description = (
+        "Displays a formatted text draft or piece of code in the UI "
+        "for the user to read and copy. Use this whenever the user asks "
+        "to generate a draft, document, or piece of code."
+    )
+    branding = get_document_instructions()
+    if branding:
+        description += f" When writing the content, follow these brand/content guidelines: {branding}"
+
     tool_def = {
         "type": "function",
         "function": {
             "name": "display_draft_in_ui",
-            "description": (
-                "Displays a formatted text draft or piece of code in the UI "
-                "for the user to read and copy. Use this whenever the user asks "
-                "to generate a draft, document, or piece of code."
-            ),
+            "description": description,
             "parameters": {
                 "type": "object",
                 "properties": {
