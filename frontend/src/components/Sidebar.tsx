@@ -12,6 +12,16 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
   const [activeTab, setActiveTab] = useState<"chats" | "reminders">("chats");
   const [reminders, setReminders] = useState<any[]>([]);
   const [cleaning, setCleaning] = useState(false);
+  const [startingNewChat, setStartingNewChat] = useState(false);
+
+  const handleNewChatClick = () => {
+    // Navigating away can take a few seconds (WS reconnect + MCP discovery) —
+    // give instant feedback so a click doesn't look like it did nothing.
+    // The setTimeout lets the browser actually paint that state before the
+    // navigation (triggered inside onNewChat) starts tearing the page down.
+    setStartingNewChat(true);
+    setTimeout(onNewChat, 0);
+  };
 
   useEffect(() => {
     fetchConversations()
@@ -75,11 +85,16 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
       {/* New chat button */}
       <div className="px-3 py-2">
         <button
-          onClick={onNewChat}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+          onClick={handleNewChatClick}
+          disabled={startingNewChat}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-wait"
         >
-          <span className="text-lg leading-none text-gray-500">+</span>
-          New chat
+          {startingNewChat ? (
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-gray-600 border-t-gray-300 animate-spin shrink-0" />
+          ) : (
+            <span className="text-lg leading-none text-gray-500">+</span>
+          )}
+          {startingNewChat ? "Starting new chat…" : "New chat"}
         </button>
       </div>
 
@@ -208,6 +223,8 @@ function ConvItem({
   active: boolean;
   onDelete: (id: string) => void;
 }) {
+  const [switching, setSwitching] = useState(false);
+
   const title =
     conv.title ||
     `Chat ${new Date(conv.created_at).toLocaleDateString(undefined, {
@@ -220,16 +237,33 @@ function ConvItem({
     onDelete(conv.id);
   };
 
+  const open = () => {
+    if (active || switching) return;
+    // Switching conversations does a full navigation (WS reconnect + MCP
+    // discovery, a few seconds) — show instant feedback so it's clear the
+    // click registered instead of looking like nothing happened. The
+    // setTimeout lets the browser paint that state before navigating away.
+    setSwitching(true);
+    setTimeout(() => { window.location.href = `/?conv=${conv.id}`; }, 0);
+  };
+
   return (
     <div
-      onClick={() => { if (!active) window.location.href = `/?conv=${conv.id}`; }}
-      className={`group flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+      onClick={open}
+      className={`group flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-xs transition-colors ${
+        switching ? "cursor-wait opacity-60" : "cursor-pointer"
+      } ${
         active
           ? "bg-gray-800 text-gray-100"
           : "text-gray-400 hover:bg-gray-900 hover:text-gray-200"
       }`}
     >
-      <span className="truncate">{title}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        {switching && (
+          <span className="w-2.5 h-2.5 rounded-full border-2 border-gray-600 border-t-gray-300 animate-spin shrink-0" />
+        )}
+        <span className="truncate">{title}</span>
+      </span>
       <button
         onClick={del}
         className="text-gray-600 hover:text-red-400 transition-colors text-[10px] opacity-0 group-hover:opacity-100 shrink-0"

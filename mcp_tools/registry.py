@@ -51,6 +51,7 @@ class MCPRegistry:
         configs = sorted(self.servers_dir.glob("*/config.json"))
         log.info("Scanning %d MCP server config(s) in %s", len(configs), self.servers_dir)
 
+        to_load: list[tuple[str, dict]] = []
         for config_path in configs:
             server_name = config_path.parent.name
             try:
@@ -64,24 +65,32 @@ class MCPRegistry:
                 continue
 
             self._discovered_names.append(server_name)
+            to_load.append((server_name, config))
 
-            t_start = time.perf_counter()
-            try:
-                tools = await self._connect_and_list_tools(server_name, config)
-                elapsed = time.perf_counter() - t_start
-                self._servers[server_name] = {"config": config, "tools": tools}
-                log.info(
-                    "Loaded MCP server '%s' — %d tool(s) in %.2fs",
-                    server_name, len(tools), elapsed,
-                )
-                for t in tools:
-                    log.debug("  tool: %s — %s", t["name"], t["description"][:80])
-            except Exception as exc:
-                elapsed = time.perf_counter() - t_start
-                log.error(
-                    "Failed to load MCP server '%s' after %.2fs — %s",
-                    server_name, elapsed, exc, exc_info=True,
-                )
+        # Each server is an independent subprocess handshake (0.5-3s) — loading
+        # them concurrently instead of one-by-one turns an 8-10s connect delay
+        # (every page load / conversation switch re-discovers all of them) into
+        # roughly the slowest single server's time.
+        await asyncio.gather(*(self._load_one(name, cfg) for name, cfg in to_load))
+
+    async def _load_one(self, server_name: str, config: dict) -> None:
+        t_start = time.perf_counter()
+        try:
+            tools = await self._connect_and_list_tools(server_name, config)
+            elapsed = time.perf_counter() - t_start
+            self._servers[server_name] = {"config": config, "tools": tools}
+            log.info(
+                "Loaded MCP server '%s' — %d tool(s) in %.2fs",
+                server_name, len(tools), elapsed,
+            )
+            for t in tools:
+                log.debug("  tool: %s — %s", t["name"], t["description"][:80])
+        except Exception as exc:
+            elapsed = time.perf_counter() - t_start
+            log.error(
+                "Failed to load MCP server '%s' after %.2fs — %s",
+                server_name, elapsed, exc, exc_info=True,
+            )
 
     async def _connect_and_list_tools(self, server_name: str, config: dict) -> list[dict]:
         params = StdioServerParameters(

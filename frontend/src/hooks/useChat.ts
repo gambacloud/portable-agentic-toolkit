@@ -18,6 +18,7 @@ interface UseChatReturn {
   hitl: HitlRequest | null;
   isThinking: boolean;
   isConnected: boolean;
+  isReady: boolean;
   convId: string | null;
   shortId: string | null;
   models: string[];
@@ -46,6 +47,7 @@ export function useChat(userId = "local"): UseChatReturn {
   });
 
   const [isConnected, setIsConnected] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hitl, setHitl] = useState<HitlRequest | null>(null);
@@ -96,6 +98,7 @@ export function useChat(userId = "local"): UseChatReturn {
             resumeConvId.current = p.conv_id;
             window.history.replaceState(null, "", `/?conv=${p.conv_id}`);
           }
+          setIsReady(true);
           setModels(p.models);
           setProfiles(p.profiles);
           setMcpServers(p.mcp_servers);
@@ -256,6 +259,7 @@ export function useChat(userId = "local"): UseChatReturn {
     hitl,
     isThinking,
     isConnected,
+    isReady,
     convId,
     shortId,
     models,

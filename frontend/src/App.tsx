@@ -16,6 +16,7 @@ export default function App() {
     hitl,
     isThinking,
     isConnected,
+    isReady,
     convId,
     shortId,
     models,
@@ -39,7 +40,7 @@ export default function App() {
   }, [messages, hitl, isThinking]);
 
   const handleNewChat = () => {
-    window.location.reload();
+    window.location.href = window.location.origin + "/";
   };
 
   return (
@@ -96,42 +97,48 @@ export default function App() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-          {messages.length === 0 && (
-            <EmptyState model={settings.model} />
-          )}
+          {!isReady ? (
+            <LoadingState />
+          ) : (
+            <>
+              {messages.length === 0 && (
+                <EmptyState model={settings.model} />
+              )}
 
-          {messages.map((msg) => (
-            <Message key={msg.id} message={msg} sessionId={convId} />
-          ))}
+              {messages.map((msg) => (
+                <Message key={msg.id} message={msg} sessionId={convId} />
+              ))}
 
-          {/* HITL prompt */}
-          {hitl && (
-            <HitlButtons hitl={hitl} onChoose={sendHitlResponse} />
-          )}
+              {/* HITL prompt */}
+              {hitl && (
+                <HitlButtons hitl={hitl} onChoose={sendHitlResponse} />
+              )}
 
-          {/* Thinking indicator */}
-          {isThinking && !hitl && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-2.5">
-                <div className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce"
-                      style={{ animationDelay: `${i * 150}ms` }}
-                    />
-                  ))}
+              {/* Thinking indicator */}
+              {isThinking && !hitl && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-2.5">
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce"
+                          style={{ animationDelay: `${i * 150}ms` }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-500">Thinking…</span>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-500">Thinking…</span>
-              </div>
-            </div>
+              )}
+            </>
           )}
 
           <div ref={bottomRef} />
         </div>
 
         {/* Input */}
-        <InputBar onSend={sendMessage} onStop={stopGeneration} disabled={isThinking || !isConnected} sendOnEnter={settings.sendOnEnter} />
+        <InputBar onSend={sendMessage} onStop={stopGeneration} disabled={isThinking || !isConnected || !isReady} sendOnEnter={settings.sendOnEnter} />
       </div>
 
       {/* Settings drawer */}
@@ -145,6 +152,15 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center py-16 select-none">
+      <div className="w-8 h-8 rounded-full border-2 border-gray-700 border-t-rose-600 animate-spin mb-4" />
+      <p className="text-sm text-gray-500">Loading conversation…</p>
     </div>
   );
 }
