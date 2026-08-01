@@ -462,11 +462,13 @@ def test_output(oid: str):
 class MCPUpdate(BaseModel):
     enabled: bool | None = None
     env: dict[str, str] | None = None
+    config_file_content: str | None = None
 
 
 class MCPInstall(BaseModel):
     name: str
     env: dict[str, str] | None = None
+    config_file_content: str | None = None
 
 
 def _redact_env(env: dict) -> dict:
@@ -512,6 +514,12 @@ def update_mcp(name: str, body: MCPUpdate):
         cfg["enabled"] = body.enabled
     if body.env:
         cfg.setdefault("env", {}).update({k: v for k, v in body.env.items() if v and v.strip()})
+    if body.config_file_content is not None:
+        from mcp_tools.installer import _load_catalog
+        entry = _load_catalog().get(name, {})
+        config_file_spec = entry.get("config_file")
+        if config_file_spec:
+            (mcp_dir / config_file_spec["filename"]).write_text(body.config_file_content, encoding="utf-8")
     config_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return {**cfg, "env": _redact_env(cfg.get("env", {}))}
 
@@ -522,7 +530,7 @@ def install_mcp(body: MCPInstall):
     catalog = _load_catalog()
     def fake_ask(prompt, choices):
         return choices[0] # Auto-approve for UI
-    result = _install(body.name.strip().lower(), catalog, fake_ask, body.env)
+    result = _install(body.name.strip().lower(), catalog, fake_ask, body.env, body.config_file_content)
     return {"result": result}
 
 

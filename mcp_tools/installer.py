@@ -58,7 +58,13 @@ def make_runner_installer_tool(ask_user_fn: Callable[[str, list[str]], str]) -> 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
 
-def _install(server_name: str, catalog: dict, ask_user_fn: Callable, env_values: dict | None = None) -> str:
+def _install(
+    server_name: str,
+    catalog: dict,
+    ask_user_fn: Callable,
+    env_values: dict | None = None,
+    config_file_content: str | None = None,
+) -> str:
     config_path = _SERVERS_DIR / server_name / "config.json"
 
     if config_path.exists():
@@ -71,7 +77,7 @@ def _install(server_name: str, catalog: dict, ask_user_fn: Callable, env_values:
         return f"'{server_name}' was disabled — re-enabled. Restart the server to load it."
 
     if server_name in catalog:
-        return _install_from_catalog(server_name, catalog[server_name], config_path, ask_user_fn, env_values)
+        return _install_from_catalog(server_name, catalog[server_name], config_path, ask_user_fn, env_values, config_file_content)
 
     # Not in catalog — search registries
     log.info("'%s' not in catalog, searching npm/PyPI...", server_name)
@@ -119,6 +125,7 @@ def _install_from_catalog(
     config_path: Path,
     ask_user_fn: Callable,
     env_values: dict | None = None,
+    config_file_content: str | None = None,
 ) -> str:
     decision = ask_user_fn(
         f"I'll install the **{server_name}** MCP server ({entry['description']}).\n"
@@ -140,6 +147,18 @@ def _install_from_catalog(
 
     command = entry.get("command", "npx")
     args = [entry["package"]] if command != "npx" else ["-y", entry["package"]]
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config_file_spec = entry.get("config_file")
+    if config_file_spec:
+        file_path = config_path.parent / config_file_spec["filename"]
+        file_path.write_text(
+            config_file_content or config_file_spec.get("default_content", ""),
+            encoding="utf-8",
+        )
+        args += [config_file_spec.get("cli_flag", "--config-file"), str(file_path)]
+
     config = {
         "name": server_name,
         "command": command,
@@ -148,7 +167,6 @@ def _install_from_catalog(
         "requires_confirmation": entry.get("requires_confirmation", True),
         "enabled": True,
     }
-    config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     log.info("Installed MCP server from catalog: %s", server_name)
 

@@ -204,7 +204,7 @@
 
   <div class="install-section glass-card">
     <div class="mcp-title"><span>📥</span> Install New Server</div>
-    <p class="mcp-details" style="margin-top: 0.5rem;">Enter a name from the catalog (e.g. <code>slack</code>, <code>teams</code>, <code>jira</code>, <code>github</code>, <code>gmail</code>, <code>brave_search</code>) — or any other service name to search npm/PyPI automatically. Add credentials in the card below after installing.</p>
+    <p class="mcp-details" style="margin-top: 0.5rem;">Enter a name from the catalog (e.g. <code>slack</code>, <code>teams</code>, <code>jira</code>, <code>github</code>, <code>gmail</code>, <code>brave_search</code>, <code>salesforce</code>, <code>snowflake</code>) — or any other service name to search npm/PyPI automatically. Add credentials in the card below after installing.</p>
     <form class="install-form" id="install-form">
       <input type="text" id="install-name" placeholder="Server name..." required>
       <button type="submit" id="install-btn">Install</button>
@@ -258,6 +258,7 @@
             <p><strong>Requires Confirmation:</strong> ${requiresConfirm}</p>
           </div>
           ${envKeys.length ? renderEnvFields(mcp.name, envMap) : ''}
+          ${renderConfigFileField(mcp.name)}
         `;
         document.getElementById('mcp-list').appendChild(card);
       });
@@ -310,6 +311,43 @@
       alert('Failed to save credentials');
       btn.disabled = false;
       btn.innerHTML = 'Save credentials';
+    }
+  }
+
+  function renderConfigFileField(name) {
+    const spec = mcpCatalog[name] && mcpCatalog[name].config_file;
+    if (!spec) return '';
+    return `
+      <div class="mcp-details" style="margin-top:1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin-bottom:0.5rem;"><strong>${spec.filename}</strong></p>
+        <textarea id="configfile-${name}" rows="6"
+          style="width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; font-size:0.8rem; font-family:monospace; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px;"
+        >${spec.default_content || ''}</textarea>
+        <button type="button" style="font-size:0.85rem; padding:0.5rem 1rem; margin-top:0.5rem;"
+                id="configfilesave-${name}" onclick="saveConfigFile('${name}')">
+          Save ${spec.filename}
+        </button>
+      </div>`;
+  }
+
+  async function saveConfigFile(name) {
+    const btn = document.getElementById('configfilesave-' + name);
+    const el = document.getElementById('configfile-' + name);
+    const content = el ? el.value : '';
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;"></div>';
+    try {
+      await fetch('/mcps/' + name, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_file_content: content })
+      });
+      fetchMCPs();
+    } catch (err) {
+      alert('Failed to save config file');
+      btn.disabled = false;
+      btn.innerHTML = 'Save';
     }
   }
 

@@ -98,3 +98,65 @@ servers:
       One-time login required before this works: open a terminal and run
       `npx @floriscornel/teams-mcp@latest authenticate`, then sign in with your
       Microsoft account. No API key needed — the login token is cached locally.
+
+  salesforce:
+    package: "@tsmztech/mcp-server-salesforce"
+    command: "npx"
+    description: "Query and manage Salesforce records, objects, and Apex"
+    requires_confirmation: true
+    env_vars:
+      - key: SALESFORCE_CONNECTION_TYPE
+        description: "Auth method — use 'User_Password' for username/password/token login"
+        required: true
+      - key: SALESFORCE_USERNAME
+        description: "Salesforce login username"
+        required: true
+      - key: SALESFORCE_PASSWORD
+        description: "Salesforce login password"
+        required: true
+      - key: SALESFORCE_TOKEN
+        description: "Salesforce security token (Settings → Reset My Security Token)"
+        required: true
+      - key: SALESFORCE_INSTANCE_URL
+        description: "Org URL, e.g. https://yourorg.my.salesforce.com — leave blank for the default login.salesforce.com"
+        required: false
+
+  snowflake:
+    package: "snowflake-labs-mcp"
+    command: "uvx"
+    description: "Query Snowflake data warehouses and Cortex AI services"
+    requires_confirmation: true
+    env_vars:
+      - key: SNOWFLAKE_ACCOUNT
+        description: "Snowflake account identifier (e.g. xy12345.us-east-1)"
+        required: true
+      - key: SNOWFLAKE_USER
+        description: "Snowflake username"
+        required: true
+      - key: SNOWFLAKE_PASSWORD
+        description: "Snowflake password or programmatic access token"
+        required: true
+      - key: SNOWFLAKE_WAREHOUSE
+        description: "Warehouse to run queries on"
+        required: false
+      - key: SNOWFLAKE_ROLE
+        description: "Role to connect as"
+        required: false
+    config_file:
+      filename: "tools_config.yaml"
+      cli_flag: "--service-config-file"
+      default_content: |
+        # Snowflake MCP tool/service permissions — review and edit before
+        # installing. This controls which SQL operations and Cortex services
+        # the agent is allowed to use. Exact keys are defined by the
+        # snowflake-labs-mcp package — see https://github.com/Snowflake-Labs/mcp
+        # for the current schema; this is a conservative read-only starting point.
+        sql_permissions:
+          select: true
+          insert: false
+          update: false
+          delete: false
+    setup_note: >-
+      The default config only allows read-only SQL (SELECT). Edit the config
+      file above before installing if you need write access — see
+      https://github.com/Snowflake-Labs/mcp for the full config schema.

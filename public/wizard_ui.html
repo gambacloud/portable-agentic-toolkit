@@ -571,9 +571,10 @@
   }
 
   const CONNECTOR_ICONS = {
-    brave_search: '🌐', slack: '💬', teams: '👥', jira: '📋', github: '🐙', gmail: '✉️'
+    brave_search: '🌐', slack: '💬', teams: '👥', jira: '📋', github: '🐙', gmail: '✉️',
+    salesforce: '☁️', snowflake: '❄️'
   };
-  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail'];
+  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail', 'salesforce', 'snowflake'];
   let mcpCatalog = {};
 
   function titleCase(name) {
@@ -605,6 +606,14 @@
       const noteHtml = entry.setup_note
         ? `<p style="font-size:0.85rem; color:var(--warning); margin-top:0.5rem;">⚠️ ${entry.setup_note}</p>`
         : '';
+      const configFileHtml = entry.config_file
+        ? `<div style="margin-top:0.5rem;">
+             <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.25rem;">${entry.config_file.filename}</label>
+             <textarea id="mcpconfigfile-${name}" rows="6"
+               style="width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; font-size:0.8rem; font-family:monospace; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px;"
+             >${entry.config_file.default_content || ''}</textarea>
+           </div>`
+        : '';
       return `
         <div class="glass-card" style="padding:1.25rem; margin-bottom:1rem;">
           <div class="status-item" style="background:none; padding:0; margin-bottom:${fields ? '0.75rem' : '0'};">
@@ -613,6 +622,7 @@
             <button id="btn-install-${name}" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installConnector('${name}')">Install</button>
           </div>
           ${fields}
+          ${configFileHtml}
           ${noteHtml}
         </div>`;
     }).join('');
@@ -629,12 +639,14 @@
       const el = document.getElementById(`mcpfield-${name}-${v.key}`);
       if (el && el.value.trim()) env[v.key] = el.value.trim();
     });
+    const configFileEl = document.getElementById(`mcpconfigfile-${name}`);
+    const configFileContent = entry.config_file && configFileEl ? configFileEl.value : undefined;
 
     try {
       const res = await fetch('/mcps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, env })
+        body: JSON.stringify({ name, env, config_file_content: configFileContent })
       });
       if (res.ok) {
         btn.innerHTML = 'Installed ✓';
