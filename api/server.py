@@ -293,6 +293,55 @@ def add_message(conv_id: str, body: MessageAppend):
     return {"ok": True}
 
 
+class ConversationAsk(BaseModel):
+    content: str
+    active_mcps: list[str] | None = None
+
+
+@api.post("/conversations/{conv_id}/ask", tags=["conversations"])
+def ask_conversation(conv_id: str, body: ConversationAsk):
+    """Synchronous invoke: run the agent on this conversation and return its reply
+    in the response — for external systems that can't hold a WebSocket open.
+    Discovering MCP servers + the LLM call can take several seconds; callers
+    should set a generous timeout (no streaming/progress here, unlike the WS chat)."""
+    conv = q.get_conversation(conv_id)
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    if not body.content.strip():
+        raise HTTPException(400, "content must not be empty")
+
+    import asyncio
+    from mcp_tools.registry import MCPRegistry
+
+    mcp_servers_dir = Path(__file__).parent.parent / "bin" / "mcp_servers"
+
+    def _auto_allow(prompt: str, choices: list[str]) -> str:
+        return choices[0]
+
+    async def _do():
+        registry = MCPRegistry(mcp_servers_dir)
+        await registry.discover()
+        try:
+            from api.chat import run_crew_sync
+            return await asyncio.to_thread(
+                run_crew_sync,
+                body.content, conv["model"], registry,
+                _auto_allow, lambda *a: None, lambda *a: None,
+                None, False, body.active_mcps,
+            )
+        finally:
+            await registry.close()
+
+    q.append_message(conv_id, "user", body.content)
+    try:
+        reply = asyncio.run(_do())
+    except Exception as exc:
+        raise HTTPException(500, f"Agent run failed: {exc}")
+    q.append_message(conv_id, "assistant", reply)
+
+    return {"reply": reply}
+
+
 @api.delete("/conversations/{conv_id}", status_code=204, tags=["conversations"])
 def remove_conversation(conv_id: str):
     if not q.delete_conversation(conv_id):
