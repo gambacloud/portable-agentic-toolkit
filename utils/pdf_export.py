@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import uuid
-from pathlib import Path
 
 from fpdf import FPDF
 from fpdf.errors import FPDFUnicodeEncodingException

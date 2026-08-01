@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -35,7 +35,7 @@ async def create_reminder(reminder_in: ReminderCreate):
 async def get_active_reminders():
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM reminders WHERE status = 'pending'").fetchall()
-    
+
     return [Reminder(
         id=row["id"], session_id=row["session_id"], message_id=row["message_id"],
         remind_at=datetime.fromisoformat(row["remind_at"]), note=row["note"],
@@ -49,7 +49,7 @@ async def complete_reminder(reminder_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Reminder not found")
         conn.execute("UPDATE reminders SET status = 'completed' WHERE id = ?", (reminder_id,))
-        
+
         return Reminder(
             id=row["id"], session_id=row["session_id"], message_id=row["message_id"],
             remind_at=datetime.fromisoformat(row["remind_at"]), note=row["note"],

@@ -3,7 +3,6 @@ Portable Agentic Toolkit — React UI entry point.
 Run with: uv run python main.py
 """
 import os
-from pathlib import Path
 
 # Disable ChromaDB telemetry before any chromadb import — prevents posthog ModuleNotFoundError in PyInstaller EXE
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
