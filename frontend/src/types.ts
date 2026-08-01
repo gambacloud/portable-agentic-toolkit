@@ -1,4 +1,4 @@
-export type MessageRole = "user" | "assistant" | "step" | "draft" | "error" | "system";
+export type MessageRole = "user" | "assistant" | "step" | "draft" | "file" | "error" | "system";
 
 export interface ChatMessage {
   id: string;
@@ -9,6 +9,9 @@ export interface ChatMessage {
   // draft-specific
   draftTitle?: string;
   draftLanguage?: string;
+  // file-specific
+  fileUrl?: string;
+  fileName?: string;
   // timestamp
   ts: number;
 }
@@ -61,10 +64,12 @@ export interface Conversation {
 // WebSocket message types (server → client)
 export type ServerMessage =
   | { type: "ready" } & ReadyPayload
+  | { type: "conv_created"; conv_id: string; short_id: string }
   | { type: "step"; name: string; content: string }
   | { type: "response"; content: string }
   | { type: "stopped" }
   | { type: "draft"; title: string; content: string; language: string }
+  | { type: "file"; title: string; url: string; filename: string }
   | { type: "hitl_request"; id: string; prompt: string; choices: string[] }
   | { type: "error"; content: string };
 

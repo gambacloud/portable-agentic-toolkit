@@ -14,6 +14,9 @@ build/
 # RAG vector store
 data/chroma/
 
+# Generated files (PDF exports, etc.)
+generated/
+
 # Logs — keep the dir, ignore the files
 logs/*.log
 logs/*.log.*

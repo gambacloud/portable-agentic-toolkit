@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchConversations } from "../api";
+import { cleanupEmptyConversations, deleteConversation, fetchConversations } from "../api";
 import type { Conversation } from "../types";
 
 interface Props {
@@ -11,12 +11,35 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<"chats" | "reminders">("chats");
   const [reminders, setReminders] = useState<any[]>([]);
+  const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
     fetchConversations()
       .then(setConvs)
       .catch(() => {/* silently ignore */});
   }, [currentConvId]);
+
+  const handleDeleteConv = async (id: string) => {
+    try {
+      await deleteConversation(id);
+      setConvs((prev) => prev.filter((c) => c.id !== id));
+      if (id === currentConvId) window.location.href = "/";
+    } catch {
+      /* silently ignore */
+    }
+  };
+
+  const handleClearEmpty = async () => {
+    setCleaning(true);
+    try {
+      await cleanupEmptyConversations();
+      fetchConversations().then(setConvs).catch(() => {});
+    } catch {
+      /* silently ignore */
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   useEffect(() => {
     if (activeTab !== "reminders") return;
@@ -90,10 +113,21 @@ export function Sidebar({ currentConvId, onNewChat }: Props) {
           convs.length === 0 ? (
             <p className="text-xs text-gray-600 px-3 py-2">No conversations yet</p>
           ) : (
-            <div className="space-y-0.5 mt-1">
-              {convs.map((c) => (
-                <ConvItem key={c.id} conv={c} active={c.id === currentConvId} />
-              ))}
+            <div className="mt-1">
+              <div className="flex justify-end px-1 pb-1">
+                <button
+                  onClick={handleClearEmpty}
+                  disabled={cleaning}
+                  className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors disabled:opacity-50"
+                >
+                  {cleaning ? "Clearing…" : "Clear empty chats"}
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {convs.map((c) => (
+                  <ConvItem key={c.id} conv={c} active={c.id === currentConvId} onDelete={handleDeleteConv} />
+                ))}
+              </div>
             </div>
           )
         ) : (
@@ -165,7 +199,15 @@ function ReminderItem({ reminder, onDismiss }: { reminder: any; onDismiss: (id: 
   );
 }
 
-function ConvItem({ conv, active }: { conv: Conversation; active: boolean }) {
+function ConvItem({
+  conv,
+  active,
+  onDelete,
+}: {
+  conv: Conversation;
+  active: boolean;
+  onDelete: (id: string) => void;
+}) {
   const title =
     conv.title ||
     `Chat ${new Date(conv.created_at).toLocaleDateString(undefined, {
@@ -173,16 +215,28 @@ function ConvItem({ conv, active }: { conv: Conversation; active: boolean }) {
       day: "numeric",
     })}`;
 
+  const del = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(conv.id);
+  };
+
   return (
     <div
       onClick={() => { if (!active) window.location.href = `/?conv=${conv.id}`; }}
-      className={`px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors truncate ${
+      className={`group flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
         active
           ? "bg-gray-800 text-gray-100"
           : "text-gray-400 hover:bg-gray-900 hover:text-gray-200"
       }`}
     >
-      {title}
+      <span className="truncate">{title}</span>
+      <button
+        onClick={del}
+        className="text-gray-600 hover:text-red-400 transition-colors text-[10px] opacity-0 group-hover:opacity-100 shrink-0"
+        title="Delete chat"
+      >
+        ✕
+      </button>
     </div>
   );
 }

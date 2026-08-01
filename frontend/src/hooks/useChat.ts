@@ -92,6 +92,10 @@ export function useChat(userId = "local"): UseChatReturn {
           const p = msg as unknown as ReadyPayload & { type: "ready" };
           setConvId(p.conv_id);
           setShortId(p.short_id);
+          if (p.conv_id) {
+            resumeConvId.current = p.conv_id;
+            window.history.replaceState(null, "", `/?conv=${p.conv_id}`);
+          }
           setModels(p.models);
           setProfiles(p.profiles);
           setMcpServers(p.mcp_servers);
@@ -131,6 +135,14 @@ export function useChat(userId = "local"): UseChatReturn {
           break;
         }
 
+        case "conv_created": {
+          setConvId(msg.conv_id);
+          setShortId(msg.short_id);
+          resumeConvId.current = msg.conv_id;
+          window.history.replaceState(null, "", `/?conv=${msg.conv_id}`);
+          break;
+        }
+
         case "step":
           addMessage({ role: "step", content: msg.content, stepName: msg.name });
           break;
@@ -147,6 +159,15 @@ export function useChat(userId = "local"): UseChatReturn {
             content: msg.content,
             draftTitle: msg.title,
             draftLanguage: msg.language,
+          });
+          break;
+
+        case "file":
+          addMessage({
+            role: "file",
+            content: msg.title,
+            fileUrl: msg.url,
+            fileName: msg.filename,
           });
           break;
 

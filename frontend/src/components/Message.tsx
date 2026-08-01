@@ -15,10 +15,11 @@ function fmtTime(ts: number | undefined): string | null {
 }
 
 export function Message({ message, sessionId }: Props) {
-  const { role, content, stepName, draftTitle, draftLanguage, ts } = message;
+  const { role, content, stepName, draftTitle, draftLanguage, fileUrl, fileName, ts } = message;
 
   if (role === "step") return <StepCard name={stepName ?? "Step"} content={content} />;
   if (role === "draft") return <DraftCard title={draftTitle ?? "Draft"} content={content} language={draftLanguage ?? ""} />;
+  if (role === "file") return <FileCard title={content} url={fileUrl ?? ""} filename={fileName ?? "download"} />;
   if (role === "system") return <SystemMessage content={content} />;
   if (role === "error") return <ErrorMessage content={content} />;
 
@@ -139,6 +140,31 @@ function DraftCard({ title, content, language }: { title: string; content: strin
         <pre className="p-4 text-xs font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
           {content}
         </pre>
+      </div>
+    </div>
+  );
+}
+
+function FileCard({ title, url, filename }: { title: string; url: string; filename: string }) {
+  return (
+    <div className="flex justify-start w-full">
+      <div className="w-full max-w-[90%] bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-lg shrink-0">📄</span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-300 truncate">{title}</p>
+              <p className="text-xs text-gray-500 truncate">{filename}</p>
+            </div>
+          </div>
+          <a
+            href={url}
+            download={filename}
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 shrink-0"
+          >
+            ⬇ Download
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -111,6 +111,61 @@ def make_draft_tool(send_fn: Callable[[dict], None]):
     return tool_def, tool_fn
 
 
+def make_pdf_tool(send_fn: Callable[[dict], None]):
+    """
+    send_fn: thread-safe callable that sends a WS message dict to the client.
+    In WS context this calls asyncio.run_coroutine_threadsafe under the hood.
+    """
+    from utils.settings import get_document_instructions
+
+    description = (
+        "Generates a downloadable PDF file and shows a download link in the UI. "
+        "Use this when the user explicitly asks for a PDF file (not just a draft "
+        "to read or copy — use display_draft_in_ui for that). "
+        "Currently only supports English/Latin-script content — if the user's "
+        "content is in Hebrew or another non-Latin script, tell them PDF export "
+        "doesn't support it yet and offer a regular draft instead."
+    )
+    branding = get_document_instructions()
+    if branding:
+        description += f" When writing the content, follow these brand/content guidelines: {branding}"
+
+    tool_def = {
+        "type": "function",
+        "function": {
+            "name": "generate_pdf_document",
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the document (e.g. 'Marketing Plan').",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full English/Latin-script text content, paragraphs separated by blank lines.",
+                    },
+                },
+                "required": ["title", "content"],
+            },
+        },
+    }
+
+    def tool_fn(title: str, content: str) -> str:
+        from utils.pdf_export import generate_pdf
+
+        try:
+            file_id, filename = generate_pdf(title, content)
+        except ValueError as exc:
+            return str(exc)
+
+        send_fn({"type": "file", "title": title, "url": f"/generated/{file_id}", "filename": filename})
+        return f"PDF generated and shown to the user for download: {filename}"
+
+    return tool_def, tool_fn
+
+
 def run_crew_sync(
     user_message: str,
     model: str,
@@ -170,6 +225,10 @@ def run_crew_sync(
     draft_def, draft_fn = make_draft_tool(send_fn)
     tool_defs.append(draft_def)
     tool_map["display_draft_in_ui"] = draft_fn
+
+    pdf_def, pdf_fn = make_pdf_tool(send_fn)
+    tool_defs.append(pdf_def)
+    tool_map["generate_pdf_document"] = pdf_fn
 
     log.debug(
         "Building runner — model=%s tools=%d profile=%s multi=%s",

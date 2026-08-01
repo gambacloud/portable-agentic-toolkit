@@ -15,7 +15,7 @@ import db.queries as q
 from db.database import DB_PATH
 from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from utils.logger import get_logger
 
@@ -55,6 +55,13 @@ def init_db_budget():
             conn.execute("ALTER TABLE users ADD COLUMN token_limit INTEGER DEFAULT 1000000") # Default 1M limit
         except Exception:
             pass
+
+
+@api.on_event("startup")
+def backfill_titles():
+    updated = q.backfill_conversation_titles()
+    if updated:
+        log.info("Backfilled titles for %d conversation(s)", updated)
 
 # ── Settings endpoints ────────────────────────────────────────────────────────
 
@@ -284,6 +291,17 @@ def add_message(conv_id: str, body: MessageAppend):
         raise HTTPException(404, "Conversation not found")
     q.append_message(conv_id, body.role, body.content)
     return {"ok": True}
+
+
+@api.delete("/conversations/{conv_id}", status_code=204, tags=["conversations"])
+def remove_conversation(conv_id: str):
+    if not q.delete_conversation(conv_id):
+        raise HTTPException(404, "Conversation not found")
+
+
+@api.post("/conversations/cleanup-empty", tags=["conversations"])
+def cleanup_empty_conversations(user_id: str = Depends(current_user)):
+    return {"deleted": q.delete_empty_conversations(user_id)}
 
 
 # ── System Profiles ───────────────────────────────────────────────────────────
@@ -556,6 +574,26 @@ def branding_ui():
     return "UI File Not Found"
 
 
+@api.get("/generated/{file_id}", tags=["meta"])
+def download_generated_file(file_id: str):
+    import uuid as _uuid
+
+    from utils.pdf_export import GENERATED_DIR
+
+    try:
+        _uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(404, "File not found")
+
+    folder = GENERATED_DIR / file_id
+    if not folder.is_dir():
+        raise HTTPException(404, "File not found")
+    files = list(folder.iterdir())
+    if not files:
+        raise HTTPException(404, "File not found")
+    return FileResponse(files[0], filename=files[0].name)
+
+
 @api.get("/schedule-runs", tags=["schedules"])
 def list_schedule_runs(sid: str | None = None, limit: int = 50):
     return q.list_schedule_runs(sid, limit)
@@ -683,6 +721,7 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
         model = models[0] if models else "llama3.2"
 
         history: list[dict] = []
+        short_id: str | None = None
         if persist:
             q.upsert_user(user_id)
             if resume_conv_id:
@@ -692,12 +731,9 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
                     short_id = existing["short_id"]
                     history = existing["messages"]
                     model = existing.get("model") or model
-                else:
-                    conv_id, short_id = q.create_conversation(user_id, model)
-            else:
-                conv_id, short_id = q.create_conversation(user_id, model)
-        else:
-            short_id = None
+            # No resume_conv_id (or it no longer exists): don't create a row yet —
+            # wait until the user actually sends a message (see msg_type == "message"
+            # below). Otherwise every page load/reconnect leaves an empty conversation.
 
         # Notify about scheduled task runs since last session
         notifications: list[dict] = []
@@ -803,6 +839,10 @@ async def ws_chat(websocket: WebSocket, user_id: str = "local", resume_conv_id: 
                     content = data.get("content", "").strip()
                     if not content:
                         continue
+
+                    if persist and not conv_id:
+                        conv_id, short_id = q.create_conversation(user_id, model, title=q.derive_title(content))
+                        await websocket.send_json({"type": "conv_created", "conv_id": conv_id, "short_id": short_id})
 
                     # Inject the current canvas state into the context if the frontend provides it
                     canvas_state = data.get("canvas_state")

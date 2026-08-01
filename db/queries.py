@@ -108,6 +108,45 @@ def list_conversations(user_id: str, limit: int = 20) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def delete_empty_conversations(user_id: str) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM conversations WHERE user_id = ? AND json_array_length(messages) = 0",
+            (user_id,),
+        )
+    return cur.rowcount
+
+
+def derive_title(content: str) -> str:
+    content = " ".join(content.split())
+    if len(content) <= 50:
+        return content
+    truncated = content[:50].rsplit(" ", 1)[0]
+    return f"{truncated}…"
+
+
+def backfill_conversation_titles() -> int:
+    """One-time fixup: give untitled-but-non-empty conversations a real title
+    derived from their first user message, instead of the generic date fallback."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, messages FROM conversations "
+            "WHERE title IS NULL AND json_array_length(messages) > 0"
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            msgs = json.loads(row["messages"])
+            first_user = next((m for m in msgs if m.get("role") == "user"), None)
+            if not first_user or not first_user.get("content", "").strip():
+                continue
+            conn.execute(
+                "UPDATE conversations SET title = ? WHERE id = ?",
+                (derive_title(first_user["content"]), row["id"]),
+            )
+            updated += 1
+    return updated
+
+
 # ── System Profiles ───────────────────────────────────────────────────────────
 
 
