@@ -3,7 +3,12 @@ MCP Tool Registry — auto-discovers MCP servers from bin/mcp_servers/.
 
 Discovery flow:
   1. Scan bin/mcp_servers/*/config.json at startup (async).
-  2. Connect to each server via stdio, call list_tools(), cache results, KEEP ALIVE.
+  2. Launch one supervisor task per server; each opens its own connection
+     (stdio/http/sse), calls list_tools(), then blocks until told to close —
+     this keeps anyio's cancel scopes correctly task-scoped (open and close
+     must happen in the same task; a shared AsyncExitStack entered from
+     concurrent gather()'d tasks and closed from the caller's task breaks
+     that invariant and crashes on close).
   3. On runner build, expose tools as (tool_defs, tool_map) for direct Ollama calls.
   4. On tool execution (sync, inside a thread), dispatch to main loop via run_coroutine_threadsafe.
   5. If requires_confirmation=true, gate execution behind HITL ask_user_fn.
@@ -13,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -33,8 +37,9 @@ class MCPRegistry:
         self.servers_dir = servers_dir
         self._servers: dict[str, dict] = {}
         self._sessions: dict[str, ClientSession] = {}
-        self._stack = AsyncExitStack()
         self._discovered_names: list[str] = []
+        self._server_tasks: dict[str, asyncio.Task] = {}
+        self._close_events: dict[str, asyncio.Event] = {}
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -67,72 +72,100 @@ class MCPRegistry:
             self._discovered_names.append(server_name)
             to_load.append((server_name, config))
 
-        # Each server is an independent subprocess handshake (0.5-3s) — loading
-        # them concurrently instead of one-by-one turns an 8-10s connect delay
-        # (every page load / conversation switch re-discovers all of them) into
-        # roughly the slowest single server's time.
-        await asyncio.gather(*(self._load_one(name, cfg) for name, cfg in to_load))
+        # Each server gets its own long-lived task that owns its connection's
+        # full lifetime (open -> stay alive -> close), started concurrently —
+        # this turns an 8-10s sequential connect delay (every page load /
+        # conversation switch re-discovers all of them) into roughly the
+        # slowest single server's time, without the cross-task cancel-scope
+        # crash a shared exit stack would hit.
+        ready_events = []
+        for name, cfg in to_load:
+            ready = asyncio.Event()
+            close_event = asyncio.Event()
+            self._close_events[name] = close_event
+            self._server_tasks[name] = asyncio.create_task(
+                self._run_server(name, cfg, ready, close_event)
+            )
+            ready_events.append(ready)
 
-    async def _load_one(self, server_name: str, config: dict) -> None:
+        await asyncio.gather(*(e.wait() for e in ready_events))
+
+    async def _run_server(self, server_name: str, config: dict, ready_event: asyncio.Event, close_event: asyncio.Event) -> None:
         t_start = time.perf_counter()
         try:
-            tools = await self._connect_and_list_tools(server_name, config)
-            elapsed = time.perf_counter() - t_start
-            self._servers[server_name] = {"config": config, "tools": tools}
-            log.info(
-                "Loaded MCP server '%s' — %d tool(s) in %.2fs",
-                server_name, len(tools), elapsed,
-            )
-            for t in tools:
-                log.debug("  tool: %s — %s", t["name"], t["description"][:80])
+            async with self._connect(server_name, config) as session:
+                self._sessions[server_name] = session
+                result = await session.list_tools()
+                tools = [
+                    {
+                        "name": t.name,
+                        "description": t.description or "",
+                        "input_schema": t.inputSchema or {},
+                    }
+                    for t in result.tools
+                ]
+                elapsed = time.perf_counter() - t_start
+                self._servers[server_name] = {"config": config, "tools": tools}
+                log.info(
+                    "Loaded MCP server '%s' — %d tool(s) in %.2fs",
+                    server_name, len(tools), elapsed,
+                )
+                for t in tools:
+                    log.debug("  tool: %s — %s", t["name"], t["description"][:80])
+
+                ready_event.set()
+                await close_event.wait()
         except Exception as exc:
             elapsed = time.perf_counter() - t_start
             log.error(
                 "Failed to load MCP server '%s' after %.2fs — %s",
                 server_name, elapsed, exc, exc_info=True,
             )
+            ready_event.set()
+        finally:
+            self._sessions.pop(server_name, None)
 
-    async def _connect_and_list_tools(self, server_name: str, config: dict) -> list[dict]:
-        transport = config.get("transport", "stdio")
+    @staticmethod
+    def _connect(server_name: str, config: dict):
+        """Async context manager yielding an initialized ClientSession for any transport."""
+        from contextlib import asynccontextmanager
 
-        if transport == "stdio":
-            params = StdioServerParameters(
-                command=config["command"],
-                args=config.get("args", []),
-                env=config.get("env") or None,
-            )
-            read, write = await self._stack.enter_async_context(stdio_client(params))
-        elif transport == "http":
-            from mcp.client.streamable_http import streamablehttp_client
-            read, write, _ = await self._stack.enter_async_context(
-                streamablehttp_client(config["url"], headers=config.get("headers") or None)
-            )
-        elif transport == "sse":
-            from mcp.client.sse import sse_client
-            read, write = await self._stack.enter_async_context(
-                sse_client(config["url"], headers=config.get("headers") or None)
-            )
-        else:
-            raise ValueError(f"Unknown transport '{transport}'")
+        @asynccontextmanager
+        async def _cm():
+            transport = config.get("transport", "stdio")
 
-        session = await self._stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
+            if transport == "stdio":
+                params = StdioServerParameters(
+                    command=config["command"],
+                    args=config.get("args", []),
+                    env=config.get("env") or None,
+                )
+                stream_cm = stdio_client(params)
+            elif transport == "http":
+                from mcp.client.streamable_http import streamablehttp_client
+                stream_cm = streamablehttp_client(config["url"], headers=config.get("headers") or None)
+            elif transport == "sse":
+                from mcp.client.sse import sse_client
+                stream_cm = sse_client(config["url"], headers=config.get("headers") or None)
+            else:
+                raise ValueError(f"Unknown transport '{transport}'")
 
-        self._sessions[server_name] = session
+            async with stream_cm as streams:
+                read, write = streams[0], streams[1]
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
 
-        result = await session.list_tools()
-        return [
-            {
-                "name": t.name,
-                "description": t.description or "",
-                "input_schema": t.inputSchema or {},
-            }
-            for t in result.tools
-        ]
+        return _cm()
 
     async def close(self):
         log.info("Closing MCP Registry and killing server processes")
-        await self._stack.aclose()
+        for event in self._close_events.values():
+            event.set()
+        if self._server_tasks:
+            await asyncio.gather(*self._server_tasks.values(), return_exceptions=True)
+        self._server_tasks.clear()
+        self._close_events.clear()
         self._sessions.clear()
 
     def call_tool_sync(self, server_name: str, tool_name: str, args: dict) -> str:
