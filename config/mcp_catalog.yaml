@@ -160,3 +160,15 @@ servers:
       The default config only allows read-only SQL (SELECT). Edit the config
       file above before installing if you need write access — see
       https://github.com/Snowflake-Labs/mcp for the full config schema.
+
+  zapier:
+    transport: "http"
+    description: "Connect to 9,000+ apps (Notion, HubSpot, Trello, and more) via Zapier's hosted MCP server"
+    requires_confirmation: true
+    url_vars:
+      - key: url
+        description: "Your personal Zapier MCP server URL — get it from https://mcp.zapier.com after connecting the apps you want to use"
+        required: true
+    setup_note: >-
+      This is a remote connector — no local install needed, just your account's
+      MCP URL. Manage which app actions are exposed at https://mcp.zapier.com.

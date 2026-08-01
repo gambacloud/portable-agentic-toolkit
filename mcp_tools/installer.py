@@ -64,6 +64,7 @@ def _install(
     ask_user_fn: Callable,
     env_values: dict | None = None,
     config_file_content: str | None = None,
+    url_values: dict | None = None,
 ) -> str:
     config_path = _SERVERS_DIR / server_name / "config.json"
 
@@ -77,7 +78,10 @@ def _install(
         return f"'{server_name}' was disabled — re-enabled. Restart the server to load it."
 
     if server_name in catalog:
-        return _install_from_catalog(server_name, catalog[server_name], config_path, ask_user_fn, env_values, config_file_content)
+        return _install_from_catalog(
+            server_name, catalog[server_name], config_path, ask_user_fn,
+            env_values, config_file_content, url_values,
+        )
 
     # Not in catalog — search registries
     log.info("'%s' not in catalog, searching npm/PyPI...", server_name)
@@ -126,6 +130,7 @@ def _install_from_catalog(
     ask_user_fn: Callable,
     env_values: dict | None = None,
     config_file_content: str | None = None,
+    url_values: dict | None = None,
 ) -> str:
     decision = ask_user_fn(
         f"I'll install the **{server_name}** MCP server ({entry['description']}).\n"
@@ -134,6 +139,40 @@ def _install_from_catalog(
     )
     if decision == "Cancel":
         return f"The user declined to install '{server_name}'. Do not retry — report this outcome as your final answer."
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    transport = entry.get("transport", "stdio")
+
+    if transport in ("http", "sse"):
+        # Remote MCP server — a URL/headers, no local process at all.
+        url_values = url_values or {}
+        instructions = []
+        url = ""
+        for var in entry.get("url_vars", []):
+            key = var["key"]
+            supplied = url_values.get(key, "").strip()
+            if key == "url":
+                url = supplied or f"<your {var['description']}>"
+            if var.get("required") and not supplied:
+                instructions.append(f"  • **{key}** — {var['description']}")
+
+        config = {
+            "name": server_name,
+            "transport": transport,
+            "url": url,
+            "headers": {},
+            "requires_confirmation": entry.get("requires_confirmation", True),
+            "enabled": True,
+        }
+        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        log.info("Installed remote MCP server from catalog: %s", server_name)
+
+        setup_note = entry.get("setup_note", "")
+        note_suffix = f"\n\n{setup_note}" if setup_note else ""
+        if instructions:
+            steps = "\n".join(instructions)
+            return f"✅ **{server_name}** config created.\n\nStill need:\n{steps}{note_suffix}"
+        return f"✅ **{server_name}** installed. Restart the server to activate it.{note_suffix}"
 
     env_values = env_values or {}
     env_section = {}
@@ -147,8 +186,6 @@ def _install_from_catalog(
 
     command = entry.get("command", "npx")
     args = [entry["package"]] if command != "npx" else ["-y", entry["package"]]
-
-    config_path.parent.mkdir(parents=True, exist_ok=True)
 
     config_file_spec = entry.get("config_file")
     if config_file_spec:

@@ -93,12 +93,28 @@ class MCPRegistry:
             )
 
     async def _connect_and_list_tools(self, server_name: str, config: dict) -> list[dict]:
-        params = StdioServerParameters(
-            command=config["command"],
-            args=config.get("args", []),
-            env=config.get("env") or None,
-        )
-        read, write = await self._stack.enter_async_context(stdio_client(params))
+        transport = config.get("transport", "stdio")
+
+        if transport == "stdio":
+            params = StdioServerParameters(
+                command=config["command"],
+                args=config.get("args", []),
+                env=config.get("env") or None,
+            )
+            read, write = await self._stack.enter_async_context(stdio_client(params))
+        elif transport == "http":
+            from mcp.client.streamable_http import streamablehttp_client
+            read, write, _ = await self._stack.enter_async_context(
+                streamablehttp_client(config["url"], headers=config.get("headers") or None)
+            )
+        elif transport == "sse":
+            from mcp.client.sse import sse_client
+            read, write = await self._stack.enter_async_context(
+                sse_client(config["url"], headers=config.get("headers") or None)
+            )
+        else:
+            raise ValueError(f"Unknown transport '{transport}'")
+
         session = await self._stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
 

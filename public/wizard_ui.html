@@ -572,9 +572,9 @@
 
   const CONNECTOR_ICONS = {
     brave_search: '🌐', slack: '💬', teams: '👥', jira: '📋', github: '🐙', gmail: '✉️',
-    salesforce: '☁️', snowflake: '❄️'
+    salesforce: '☁️', snowflake: '❄️', zapier: '⚡'
   };
-  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail', 'salesforce', 'snowflake'];
+  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail', 'salesforce', 'snowflake', 'zapier'];
   let mcpCatalog = {};
 
   function titleCase(name) {
@@ -603,6 +603,12 @@
           <input type="password" id="mcpfield-${name}-${v.key}" placeholder="${v.description}"
                  style="width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; font-size:0.9rem;">
         </div>`).join('');
+      const urlFields = (entry.url_vars || []).map((v) => `
+        <div style="margin-bottom:0.5rem;">
+          <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.25rem;">${v.key}</label>
+          <input type="text" id="mcpurlfield-${name}-${v.key}" placeholder="${v.description}"
+                 style="width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; font-size:0.9rem;">
+        </div>`).join('');
       const noteHtml = entry.setup_note
         ? `<p style="font-size:0.85rem; color:var(--warning); margin-top:0.5rem;">⚠️ ${entry.setup_note}</p>`
         : '';
@@ -622,6 +628,7 @@
             <button id="btn-install-${name}" class="secondary" style="font-size:0.9rem; padding:0.5rem 1rem;" onclick="installConnector('${name}')">Install</button>
           </div>
           ${fields}
+          ${urlFields}
           ${configFileHtml}
           ${noteHtml}
         </div>`;
@@ -639,6 +646,11 @@
       const el = document.getElementById(`mcpfield-${name}-${v.key}`);
       if (el && el.value.trim()) env[v.key] = el.value.trim();
     });
+    const urlValues = {};
+    (entry.url_vars || []).forEach((v) => {
+      const el = document.getElementById(`mcpurlfield-${name}-${v.key}`);
+      if (el && el.value.trim()) urlValues[v.key] = el.value.trim();
+    });
     const configFileEl = document.getElementById(`mcpconfigfile-${name}`);
     const configFileContent = entry.config_file && configFileEl ? configFileEl.value : undefined;
 
@@ -646,7 +658,7 @@
       const res = await fetch('/mcps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, env, config_file_content: configFileContent })
+        body: JSON.stringify({ name, env, config_file_content: configFileContent, url_values: urlValues })
       });
       if (res.ok) {
         btn.innerHTML = 'Installed ✓';
