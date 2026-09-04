@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 from utils.paths import app_dir
 
 SETTINGS_DIR = app_dir() / "settings"
@@ -46,6 +48,28 @@ Examples:
 - "Our brand colors are navy blue and gold — mention them only if the user
    asks about visual styling, not in the document body."
 """,
+    "model_limits.yaml": """\
+# Per-model token budgets (optional). Nothing here means no model-specific
+# limit — only the global per-user budget (see /users/me/budget) applies.
+#
+# Key = exact model id (e.g. "claude/claude-sonnet-4-6") or a provider
+# prefix ending in "*" (e.g. "claude/*") to cover every model from that
+# provider. The most specific matching key wins.
+#
+# period: "month" (resets every calendar month, default) or "session"
+# (resets per conversation).
+#
+# Example:
+# limits:
+#   "claude/*":
+#     limit: 500000
+#     period: month
+#   "claude/claude-opus-4-7":
+#     limit: 100000
+#     period: session
+
+limits: {}
+""",
     "README.md": """\
 # Settings Directory
 
@@ -56,6 +80,7 @@ Place files here to customise the Portable Agentic Toolkit:
 | `system_prompt.md` | Extra instructions appended to every agent's system prompt |
 | `user_prompt.md`   | Text prepended to every user message |
 | `document_instructions.md` | Guidelines applied only when generating a draft/document/summary |
+| `model_limits.yaml` | Per-model token budgets (e.g. cap "claude/*" usage) |
 | `logo.png`         | Custom logo shown in the UI (also: .jpg, .jpeg, .svg, .webp) |
 
 Restart the app after editing these files, or use `/branding-ui` to edit
@@ -128,3 +153,47 @@ def save_logo(data: bytes, ext: str) -> None:
         if stale.exists():
             stale.unlink()
     (SETTINGS_DIR / f"logo.{ext}").write_bytes(data)
+
+
+def get_model_limits() -> dict[str, dict]:
+    """Parses settings/model_limits.yaml into {pattern: {"limit": int, "period": "month"|"session"}}."""
+    p = SETTINGS_DIR / "model_limits.yaml"
+    if not p.exists():
+        return {}
+    try:
+        raw = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("limits") or {}
+    except Exception:
+        return {}
+
+    out: dict[str, dict] = {}
+    for pattern, cfg in raw.items():
+        if not isinstance(cfg, dict) or not cfg.get("limit"):
+            continue
+        period = cfg.get("period", "month")
+        out[pattern] = {
+            "limit": int(cfg["limit"]),
+            "period": period if period in ("month", "session") else "month",
+        }
+    return out
+
+
+def save_model_limits(limits: dict[str, dict]) -> None:
+    """Overwrites settings/model_limits.yaml's `limits` map. Each value needs
+    {"limit": int, "period": "month"|"session"}."""
+    ensure_settings_dir()
+    header = _TEMPLATES["model_limits.yaml"].rsplit("limits: {}", 1)[0]
+    body = yaml.safe_dump({"limits": limits}, default_flow_style=False, allow_unicode=True, sort_keys=True)
+    (SETTINGS_DIR / "model_limits.yaml").write_text(f"{header}{body}", encoding="utf-8")
+
+
+def resolve_model_limit(model: str) -> dict | None:
+    """Finds the most specific configured limit for a model id (exact match, then longest '*' prefix)."""
+    limits = get_model_limits()
+    if model in limits:
+        return limits[model]
+    best_pattern, best_cfg = None, None
+    for pattern, cfg in limits.items():
+        if pattern.endswith("*") and model.startswith(pattern[:-1]):
+            if best_pattern is None or len(pattern) > len(best_pattern):
+                best_pattern, best_cfg = pattern, cfg
+    return best_cfg

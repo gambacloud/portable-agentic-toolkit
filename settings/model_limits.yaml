@@ -1,0 +1,20 @@
+# Per-model token budgets (optional). Nothing here means no model-specific
+# limit — only the global per-user budget (see /users/me/budget) applies.
+#
+# Key = exact model id (e.g. "claude/claude-sonnet-4-6") or a provider
+# prefix ending in "*" (e.g. "claude/*") to cover every model from that
+# provider. The most specific matching key wins.
+#
+# period: "month" (resets every calendar month, default) or "session"
+# (resets per conversation).
+#
+# Example:
+# limits:
+#   "claude/*":
+#     limit: 500000
+#     period: month
+#   "claude/claude-opus-4-7":
+#     limit: 100000
+#     period: session
+
+limits: {}

@@ -38,6 +38,7 @@ except ImportError:
     pass
 
 from db.database import init_db
+from utils.auth import get_or_create_bootstrap_password
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -78,6 +79,10 @@ if __name__ == "__main__":
 
     url = f"http://localhost:{API_PORT}"
     log.info("%s ready — %s  (docs: %s/docs)", BOT_NAME, url, url)
+    log.info(
+        "First run? Log in as username 'local', password: %s  (only valid until you change it — also saved to .auth_token next to the app)",
+        get_or_create_bootstrap_password(),
+    )
 
     # Open browser after server is up (0.5 s delay)
     threading.Timer(0.5, webbrowser.open, args=[url]).start()

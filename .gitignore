@@ -28,6 +28,8 @@ logs/*.log.*
 
 # Environment / secrets
 .env
+.auth_token
+.session_secret
 .env.*
 !.env.example
 
