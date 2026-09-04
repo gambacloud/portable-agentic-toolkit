@@ -200,7 +200,12 @@ class MCPRegistry:
         """Returns all discovered server names, including those that failed to connect."""
         return list(self._discovered_names)
 
-    def get_runner_tools(self, ask_user_fn: Optional[Callable] = None, only_servers: Optional[list] = None) -> tuple[list[dict], dict]:
+    def get_runner_tools(
+        self,
+        ask_user_fn: Optional[Callable] = None,
+        only_servers: Optional[list] = None,
+        is_privileged: bool = False,
+    ) -> tuple[list[dict], dict]:
         tool_defs: list[dict] = []
         tool_map: dict[str, Callable] = {}
 
@@ -226,7 +231,7 @@ class MCPRegistry:
                 })
                 tool_map[safe_name] = _make_runner_callable(
                     self, server_name, t["name"], needs_confirm, ask_user_fn,
-                    get_logger(f"mcp.{server_name}.{t['name']}"),
+                    get_logger(f"mcp.{server_name}.{t['name']}"), is_privileged,
                 )
 
         log.debug("Runner tools prepared: %d", len(tool_defs))
@@ -242,8 +247,34 @@ class MCPRegistry:
         return "\n".join(lines)
 
 
-def _make_runner_callable(registry: MCPRegistry, server_name: str, tool_name: str, needs_confirm: bool, ask_user_fn: Optional[Callable], logger):
+def _make_runner_callable(
+    registry: MCPRegistry, server_name: str, tool_name: str, needs_confirm: bool,
+    ask_user_fn: Optional[Callable], logger, is_privileged: bool = False,
+):
     def fn(**kwargs):
+        # DLP: this is the actual egress boundary — kwargs are about to be sent
+        # to an external service (Slack/Gmail/GitHub/...). Block "secret"-level
+        # matches unless the caller is manager+ (is_privileged).
+        from utils.dlp import highest_level, level_rank, redact_text, scan_text
+        from utils.settings import get_dlp_policy
+
+        policy = get_dlp_policy()
+        raw_json = json.dumps(kwargs, default=str)
+        findings = scan_text(raw_json, policy["patterns"])
+        if findings:
+            top = highest_level(findings)
+            logger.warning("DLP match on tool '%s': %s (%s)", tool_name, top, [f["name"] for f in findings])
+            blocking = [f for f in findings if f["action"] == "block" and level_rank(f["level"]) >= level_rank(policy["block_at_level"])]
+            if blocking and not is_privileged:
+                names = ", ".join(sorted({f["name"] for f in blocking}))
+                return (
+                    f"Blocked by DLP policy: this action was flagged '{top}' (matched: {names}). "
+                    "Requires a manager or admin to run it."
+                )
+            redacted_json = redact_text(raw_json, findings, policy["patterns"])
+            if redacted_json != raw_json:
+                kwargs = json.loads(redacted_json)
+
         if needs_confirm and ask_user_fn:
             import json as _json
             preview = _json.dumps(kwargs, indent=2)

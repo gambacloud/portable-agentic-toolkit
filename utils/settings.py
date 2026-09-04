@@ -48,7 +48,10 @@ Examples:
 - "Our brand colors are navy blue and gold — mention them only if the user
    asks about visual styling, not in the document body."
 """,
-    "model_limits.yaml": """\
+    "org_policy.yaml": """\
+# Organizational policy — one file for the admin-controlled rules that used
+# to live in separate configs. Edit via the API (admin-only) or by hand.
+
 # Per-model token budgets (optional). Nothing here means no model-specific
 # limit — only the global per-user budget (see /users/me/budget) applies.
 #
@@ -60,15 +63,35 @@ Examples:
 # (resets per conversation).
 #
 # Example:
-# limits:
+# model_limits:
 #   "claude/*":
 #     limit: 500000
 #     period: month
-#   "claude/claude-opus-4-7":
-#     limit: 100000
-#     period: session
+model_limits: {}
 
-limits: {}
+# DLP (data-leak prevention): a local, non-LLM text scan run against outbound
+# MCP tool-call arguments (the boundary where data actually leaves the app —
+# Slack, Gmail, GitHub, etc). A generic set of technical patterns (API keys,
+# private keys, JWTs, ...) is always active and always classified "secret";
+# `patterns` below adds organization-specific terms on top of that.
+#
+# levels, low to high: public < internal < confidential < secret
+# block_at_level: findings at or above this level are blocked unless the
+# requesting user's role is manager or admin.
+#
+# Example:
+# dlp:
+#   block_at_level: secret
+#   patterns:
+#     - name: project_codename
+#       level: confidential
+#       keywords: ["Project Chimera"]
+#     - name: customer_export_marker
+#       level: secret
+#       regex: "BEGIN CUSTOMER EXPORT"
+dlp:
+  block_at_level: secret
+  patterns: []
 """,
     "README.md": """\
 # Settings Directory
@@ -80,7 +103,7 @@ Place files here to customise the Portable Agentic Toolkit:
 | `system_prompt.md` | Extra instructions appended to every agent's system prompt |
 | `user_prompt.md`   | Text prepended to every user message |
 | `document_instructions.md` | Guidelines applied only when generating a draft/document/summary |
-| `model_limits.yaml` | Per-model token budgets (e.g. cap "claude/*" usage) |
+| `org_policy.yaml`  | Org-wide policy: per-model token budgets + DLP (data-leak) patterns |
 | `logo.png`         | Custom logo shown in the UI (also: .jpg, .jpeg, .svg, .webp) |
 
 Restart the app after editing these files, or use `/branding-ui` to edit
@@ -155,16 +178,40 @@ def save_logo(data: bytes, ext: str) -> None:
     (SETTINGS_DIR / f"logo.{ext}").write_bytes(data)
 
 
-def get_model_limits() -> dict[str, dict]:
-    """Parses settings/model_limits.yaml into {pattern: {"limit": int, "period": "month"|"session"}}."""
-    p = SETTINGS_DIR / "model_limits.yaml"
-    if not p.exists():
-        return {}
-    try:
-        raw = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("limits") or {}
-    except Exception:
-        return {}
+# ── Org policy (settings/org_policy.yaml): model budgets + DLP ──────────────
 
+
+def _load_org_policy() -> dict:
+    p = SETTINGS_DIR / "org_policy.yaml"
+    if p.exists():
+        try:
+            return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return {}
+
+    # One-time migration from the old standalone model_limits.yaml, if present.
+    legacy = SETTINGS_DIR / "model_limits.yaml"
+    if legacy.exists():
+        try:
+            legacy_limits = (yaml.safe_load(legacy.read_text(encoding="utf-8")) or {}).get("limits") or {}
+        except Exception:
+            legacy_limits = {}
+        merged = {"model_limits": legacy_limits, "dlp": {"block_at_level": "secret", "patterns": []}}
+        _save_org_policy(merged)
+        return merged
+    return {}
+
+
+def _save_org_policy(policy: dict) -> None:
+    ensure_settings_dir()
+    header = _TEMPLATES["org_policy.yaml"].split("\nmodel_limits:", 1)[0]
+    body = yaml.safe_dump(policy, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    (SETTINGS_DIR / "org_policy.yaml").write_text(f"{header}\n{body}", encoding="utf-8")
+
+
+def get_model_limits() -> dict[str, dict]:
+    """{pattern: {"limit": int, "period": "month"|"session"}} from org_policy.yaml's model_limits section."""
+    raw = _load_org_policy().get("model_limits") or {}
     out: dict[str, dict] = {}
     for pattern, cfg in raw.items():
         if not isinstance(cfg, dict) or not cfg.get("limit"):
@@ -178,12 +225,10 @@ def get_model_limits() -> dict[str, dict]:
 
 
 def save_model_limits(limits: dict[str, dict]) -> None:
-    """Overwrites settings/model_limits.yaml's `limits` map. Each value needs
-    {"limit": int, "period": "month"|"session"}."""
-    ensure_settings_dir()
-    header = _TEMPLATES["model_limits.yaml"].rsplit("limits: {}", 1)[0]
-    body = yaml.safe_dump({"limits": limits}, default_flow_style=False, allow_unicode=True, sort_keys=True)
-    (SETTINGS_DIR / "model_limits.yaml").write_text(f"{header}{body}", encoding="utf-8")
+    """Overwrites the model_limits section. Each value needs {"limit": int, "period": "month"|"session"}."""
+    policy = _load_org_policy()
+    policy["model_limits"] = limits
+    _save_org_policy(policy)
 
 
 def resolve_model_limit(model: str) -> dict | None:
@@ -197,3 +242,31 @@ def resolve_model_limit(model: str) -> dict | None:
             if best_pattern is None or len(pattern) > len(best_pattern):
                 best_pattern, best_cfg = pattern, cfg
     return best_cfg
+
+
+# ── DLP policy (also in org_policy.yaml) ─────────────────────────────────────
+
+_DLP_LEVELS = ("public", "internal", "confidential", "secret")
+
+
+def get_dlp_policy() -> dict:
+    """{"block_at_level": str, "patterns": [{"name","level","keywords"?,"regex"?}, ...]}."""
+    raw = _load_org_policy().get("dlp") or {}
+    block_at = raw.get("block_at_level", "secret")
+    patterns = []
+    for p in raw.get("patterns") or []:
+        if not isinstance(p, dict) or not p.get("name") or p.get("level") not in _DLP_LEVELS:
+            continue
+        if not p.get("keywords") and not p.get("regex"):
+            continue
+        patterns.append(p)
+    return {
+        "block_at_level": block_at if block_at in _DLP_LEVELS else "secret",
+        "patterns": patterns,
+    }
+
+
+def save_dlp_policy(block_at_level: str, patterns: list[dict]) -> None:
+    policy = _load_org_policy()
+    policy["dlp"] = {"block_at_level": block_at_level, "patterns": patterns}
+    _save_org_policy(policy)

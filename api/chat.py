@@ -178,12 +178,13 @@ def run_crew_sync(
     active_mcps: Optional[list[str]] = None,
     on_token_usage: Optional[Callable[[int, int], None]] = None,
     kb_sources: Optional[list[str]] = None,
+    is_privileged: bool = False,
 ) -> str:
     tool_defs: list = []
     tool_map: dict = {}
 
     if registry:
-        t_defs, t_map = registry.get_runner_tools(ask_user_fn, only_servers=active_mcps or None)
+        t_defs, t_map = registry.get_runner_tools(ask_user_fn, only_servers=active_mcps or None, is_privileged=is_privileged)
         tool_defs += t_defs
         tool_map.update(t_map)
 

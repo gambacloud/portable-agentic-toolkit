@@ -1,3 +1,6 @@
+# Organizational policy — one file for the admin-controlled rules that used
+# to live in separate configs. Edit via the API (admin-only) or by hand.
+
 # Per-model token budgets (optional). Nothing here means no model-specific
 # limit — only the global per-user budget (see /users/me/budget) applies.
 #
@@ -9,12 +12,11 @@
 # (resets per conversation).
 #
 # Example:
-# limits:
+# model_limits:
 #   "claude/*":
 #     limit: 500000
 #     period: month
-#   "claude/claude-opus-4-7":
-#     limit: 100000
-#     period: session
-
-limits: {}
+model_limits: {}
+dlp:
+  block_at_level: secret
+  patterns: []

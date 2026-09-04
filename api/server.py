@@ -531,6 +531,63 @@ def put_model_limits_config(body: dict[str, ModelLimitEntry], user_id: str = Dep
     return {"ok": True}
 
 
+# ── DLP policy (settings/org_policy.yaml's `dlp` section) ───────────────────
+
+
+class DlpPatternEntry(BaseModel):
+    name: str
+    level: str  # "public" | "internal" | "confidential" | "secret"
+    action: str = "block"  # "block" | "redact"
+    keywords: list[str] | None = None
+    regex: str | None = None
+
+
+class DlpPolicyUpdate(BaseModel):
+    block_at_level: str
+    patterns: list[DlpPatternEntry]
+
+
+@api.get("/settings/dlp-policy", tags=["settings"])
+def get_dlp_policy_config(user_id: str = Depends(require_role("admin"))):
+    from utils.settings import get_dlp_policy
+    return get_dlp_policy()
+
+
+@api.put("/settings/dlp-policy", tags=["settings"])
+def put_dlp_policy_config(body: DlpPolicyUpdate, user_id: str = Depends(require_role("admin"))):
+    from utils.dlp import LEVELS
+    if body.block_at_level not in LEVELS:
+        raise HTTPException(400, f"block_at_level must be one of {list(LEVELS)}")
+    for p in body.patterns:
+        if p.level not in LEVELS:
+            raise HTTPException(400, f"level must be one of {list(LEVELS)} for pattern '{p.name}'")
+        if p.action not in ("block", "redact"):
+            raise HTTPException(400, f"action must be 'block' or 'redact' for pattern '{p.name}'")
+        if not p.keywords and not p.regex:
+            raise HTTPException(400, f"pattern '{p.name}' needs keywords or regex")
+    from utils.settings import save_dlp_policy
+    save_dlp_policy(body.block_at_level, [p.model_dump(exclude_none=True) for p in body.patterns])
+    return {"ok": True}
+
+
+class DlpScanRequest(BaseModel):
+    text: str
+
+
+@api.post("/dlp/scan", tags=["settings"])
+def scan_for_dlp(body: DlpScanRequest, user_id: str = Depends(current_user)):
+    """Lets any logged-in user test the org's DLP policy against a snippet of
+    text before sending it somewhere — not an enforcement point itself (that's
+    mcp_tools/registry.py, on the actual outbound tool call)."""
+    from utils.dlp import highest_level, level_rank, scan_text
+    from utils.settings import get_dlp_policy
+    policy = get_dlp_policy()
+    findings = scan_text(body.text, policy["patterns"])
+    top = highest_level(findings)
+    blocking = [f for f in findings if f["action"] == "block" and level_rank(f["level"]) >= level_rank(policy["block_at_level"])]
+    return {"findings": findings, "level": top, "would_block": bool(blocking)}
+
+
 # ── Hierarchy: roles / managers / departments ────────────────────────────────
 
 
@@ -703,6 +760,8 @@ def ask_conversation(conv_id: str, body: ConversationAsk):
 
     user_id = conv["user_id"]
     model = conv["model"]
+    owner = q.get_user(user_id)
+    is_privileged = ROLE_RANK.get((owner or {}).get("role", "employee"), 0) >= ROLE_RANK["manager"]
 
     from db.database import get_conn
     with get_conn() as conn:
@@ -739,6 +798,7 @@ def ask_conversation(conv_id: str, body: ConversationAsk):
                 body.content, model, registry,
                 _auto_allow, lambda *a: None, lambda *a: None,
                 None, False, body.active_mcps, _on_token_usage,
+                None, is_privileged,
             )
         finally:
             await registry.close()
@@ -1200,6 +1260,8 @@ async def ws_chat(websocket: WebSocket, resume_conv_id: str | None = None):
         await websocket.close(code=4401)
         return
     user_id = websocket.session["user_id"]
+    _user_row = q.get_user(user_id)
+    is_privileged = ROLE_RANK.get((_user_row or {}).get("role", "employee"), 0) >= ROLE_RANK["manager"]
     await websocket.accept()
     loop = asyncio.get_event_loop()
 
@@ -1394,6 +1456,7 @@ async def ws_chat(websocket: WebSocket, resume_conv_id: str | None = None):
                         _content=content, _model=model, _profile_id=profile_id,
                         _multi_agent=multi_agent, _active_mcps=active_mcps,
                         _on_token_usage=on_token_usage, _kb_sources=kb_sources,
+                        _is_privileged=is_privileged,
                     ):
                         nonlocal agent_task
                         try:
@@ -1403,7 +1466,7 @@ async def ws_chat(websocket: WebSocket, resume_conv_id: str | None = None):
                                 _content, _model, registry,
                                 ask_user_sync, on_agent_step, send_sync,
                                 _profile_id, _multi_agent, _active_mcps, _on_token_usage,
-                                _kb_sources,
+                                _kb_sources, _is_privileged,
                             )
                             if persist and conv_id:
                                 q.append_message(conv_id, "assistant", str(result))
