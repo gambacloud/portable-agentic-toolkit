@@ -4,6 +4,7 @@ Chat logic shared between the WebSocket handler and the scheduler.
 from __future__ import annotations
 
 import os
+import re
 from typing import Callable, Optional
 
 import ollama as ol
@@ -15,23 +16,45 @@ from utils.logger import get_logger
 
 log = get_logger(__name__)
 
+# Static fallbacks — used only if the live provider lookup below fails (no
+# network, bad key, provider outage). Keeping these small and rarely touched
+# is fine precisely because they're a fallback, not the primary source.
 _GROQ_MODELS = [
     "groq/llama-3.3-70b-versatile",
-    "groq/llama3-groq-70b-8192-tool-use-preview",
     "groq/llama-3.1-8b-instant",
 ]
 
 _CLAUDE_MODELS = [
-    "claude/claude-sonnet-4-6",
-    "claude/claude-opus-4-7",
+    "claude/claude-sonnet-5",
+    "claude/claude-opus-5",
     "claude/claude-haiku-4-5-20251001",
 ]
 
 _GEMINI_MODELS = [
-    "gemini/gemini-2.0-flash",
-    "gemini/gemini-1.5-pro",
-    "gemini/gemini-1.5-flash",
+    # Rolling aliases (auto-track Google's current release) instead of pinned
+    # dated versions — a pinned model (e.g. gemini-2.0-flash) gets retired and
+    # 404s with no warning; see https://ai.google.dev/gemini-api/docs/models.
+    "gemini/gemini-pro-latest",
+    "gemini/gemini-flash-latest",
+    "gemini/gemini-flash-lite-latest",
 ]
+
+# Gemini's models.list() also returns image/speech/embedding/etc. models,
+# none of which can hold a text chat — offering them just invites a
+# confusing failure several seconds later.
+_GEMINI_NOT_TEXT = (
+    "embedding", "image", "tts", "-live", "lyria", "veo", "imagen",
+    "nano-banana", "aqa", "learnlm", "robotics", "computer-use", "transcribe",
+)
+
+_VERSION = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def _descending(name: str):
+    """Sort key that puts later-looking version numbers first (gemini-3.6
+    before gemini-3.5, without burying gemini-3.6 under gemma-4)."""
+    parts = _VERSION.split(name)
+    return [(-float(p), "") if _VERSION.fullmatch(p) else (0.0, p) for p in parts]
 
 
 def get_ollama_models() -> list[str]:
@@ -54,10 +77,58 @@ def get_ollama_cloud_models() -> list[str]:
         return []
 
 
+def get_claude_models() -> list[str]:
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        return [f"claude/{m.id}" for m in client.models.list(limit=100)]
+    except Exception as exc:
+        log.debug("Anthropic models.list() failed — using static fallback: %s", exc)
+        return _CLAUDE_MODELS
+
+
+def get_gemini_models() -> list[str]:
+    try:
+        import httpx
+        key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        resp = httpx.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": key}, timeout=5,
+        )
+        resp.raise_for_status()
+        names = []
+        for m in resp.json().get("models", []):
+            name = m.get("name", "").removeprefix("models/")
+            if not name or "generateContent" not in m.get("supportedGenerationMethods", []):
+                continue
+            if any(word in name for word in _GEMINI_NOT_TEXT):
+                continue
+            names.append(name)
+        names.sort(key=lambda n: (not n.startswith("gemini-"), _descending(n)))
+        return [f"gemini/{n}" for n in names] or _GEMINI_MODELS
+    except Exception as exc:
+        log.debug("Gemini models.list() failed — using static fallback: %s", exc)
+        return _GEMINI_MODELS
+
+
+def get_groq_models() -> list[str]:
+    try:
+        import httpx
+        resp = httpx.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}"}, timeout=5,
+        )
+        resp.raise_for_status()
+        return sorted(f"groq/{m['id']}" for m in resp.json().get("data", [])) or _GROQ_MODELS
+    except Exception as exc:
+        log.debug("Groq models.list() failed — using static fallback: %s", exc)
+        return _GROQ_MODELS
+
+
 def get_all_models() -> list[str]:
-    claude = _CLAUDE_MODELS if os.getenv("ANTHROPIC_API_KEY") else []
-    gemini = _GEMINI_MODELS if (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")) else []
-    groq = _GROQ_MODELS if os.getenv("GROQ_API_KEY") else []
+    claude = get_claude_models() if os.getenv("ANTHROPIC_API_KEY") else []
+    gemini = get_gemini_models() if (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")) else []
+    groq = get_groq_models() if os.getenv("GROQ_API_KEY") else []
     ollama_cloud = get_ollama_cloud_models() if os.getenv("OLLAMA_API_KEY") else []
     return claude + gemini + groq + ollama_cloud + get_ollama_models()
 
