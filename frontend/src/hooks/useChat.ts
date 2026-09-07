@@ -25,6 +25,7 @@ interface UseChatReturn {
   profiles: Profile[];
   mcpServers: string[];
   settings: ChatSettings;
+  tokenCount: number;
   updateSettings: (patch: Partial<ChatSettings>) => void;
   sendMessage: (content: string) => void;
   sendHitlResponse: (id: string, value: string) => void;
@@ -57,6 +58,7 @@ export function useChat(userId = "local"): UseChatReturn {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const [settings, setSettings] = useState<ChatSettings>(settingsRef.current);
+  const [tokenCount, setTokenCount] = useState(0);
 
   const addMessage = useCallback((msg: Omit<ChatMessage, "id" | "ts">) => {
     setMessages((prev) => [...prev, { ...msg, id: mkId(), ts: Date.now() }]);
@@ -102,6 +104,7 @@ export function useChat(userId = "local"): UseChatReturn {
           setModels(p.models);
           setProfiles(p.profiles);
           setMcpServers(p.mcp_servers);
+          setTokenCount(0);
 
           const newSettings: ChatSettings = {
             model: p.model,
@@ -188,6 +191,10 @@ export function useChat(userId = "local"): UseChatReturn {
           setHitl(null);
           addMessage({ role: "error", content: msg.content });
           break;
+
+        case "token_update":
+          setTokenCount((prev) => prev + msg.added);
+          break;
       }
     };
 
@@ -266,6 +273,7 @@ export function useChat(userId = "local"): UseChatReturn {
     profiles,
     mcpServers,
     settings,
+    tokenCount,
     updateSettings,
     sendMessage,
     sendHitlResponse,

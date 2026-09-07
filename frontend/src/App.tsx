@@ -23,6 +23,7 @@ export default function App() {
     profiles,
     mcpServers,
     settings,
+    tokenCount,
     updateSettings,
     sendMessage,
     sendHitlResponse,
@@ -76,6 +77,16 @@ export default function App() {
             <span className="text-xs text-gray-500 font-mono hidden sm:block">
               {settings.model}
             </span>
+
+            {/* Live token counter for this conversation */}
+            {tokenCount > 0 && (
+              <span
+                className="text-xs text-gray-500 font-mono hidden sm:block"
+                title="Tokens used in this conversation since it was opened"
+              >
+                {tokenCount.toLocaleString()} tok
+              </span>
+            )}
 
             {/* Settings button */}
             <button

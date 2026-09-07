@@ -71,7 +71,8 @@ export type ServerMessage =
   | { type: "draft"; title: string; content: string; language: string }
   | { type: "file"; title: string; url: string; filename: string }
   | { type: "hitl_request"; id: string; prompt: string; choices: string[] }
-  | { type: "error"; content: string };
+  | { type: "error"; content: string }
+  | { type: "token_update"; added: number };
 
 // WebSocket message types (client → server)
 export type ClientMessage =
