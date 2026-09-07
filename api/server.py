@@ -56,7 +56,12 @@ _AUTH_ALLOWLIST = {"/login", "/auth/login", "/health", "/favicon.ico"}
 class AuthGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in _AUTH_ALLOWLIST or path.startswith("/settings-assets/"):
+        # /assets/ is the built React bundle (frontend/dist/assets). Vite marks
+        # its <script>/<link> tags crossorigin, which makes browsers omit
+        # cookies on those requests even same-origin — gating this path behind
+        # the session cookie 401s the JS/CSS on every load, breaking the UI
+        # entirely (no user data lives here, just compiled frontend code).
+        if path in _AUTH_ALLOWLIST or path.startswith("/settings-assets/") or path.startswith("/assets/"):
             return await call_next(request)
 
         auth_header = request.headers.get("authorization", "")

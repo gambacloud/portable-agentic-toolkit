@@ -16,6 +16,7 @@ _TEMPLATES: dict[str, str] = {
     "system_prompt.md": """\
 # Additional System Instructions
 
+<!--
 Add any custom instructions here. They are appended to every agent's system
 prompt. Useful for company context, tone guidelines, or domain knowledge.
 
@@ -23,20 +24,24 @@ Examples:
 - "Always reply in Hebrew."
 - "We are an e-commerce company called Acme. Prices are in USD."
 - "Never reveal internal tool names to the user."
+-->
 """,
     "user_prompt.md": """\
 # User Prompt Prefix
 
+<!--
 Text here is prepended to every user message before it reaches the AI.
 Leave this empty (or only comments) to disable.
 
 Examples:
 - "Context: today is {date}. The user is an expert developer."
 - "Always respond concisely, max 3 sentences unless asked for more."
+-->
 """,
     "document_instructions.md": """\
 # Document / Summary Branding
 
+<!--
 Instructions here are only used when the agent generates a draft, document,
 or summary (not regular chat replies). Describe tone, required structure,
 a footer/disclaimer to include, or how to describe your brand colors in
@@ -47,6 +52,7 @@ Examples:
 - "Use a formal, concise tone. Always include a one-line TL;DR at the top."
 - "Our brand colors are navy blue and gold — mention them only if the user
    asks about visual styling, not in the document body."
+-->
 """,
     "org_policy.yaml": """\
 # Organizational policy — one file for the admin-controlled rules that used
@@ -111,12 +117,60 @@ the logo and document instructions live without restarting.
 """,
 }
 
+# Pre-fix versions of the three templates above, from before their example
+# text was wrapped in HTML comments. _load_md only strips <!-- --> blocks and
+# the H1 heading, so an untouched file in this shape leaked its own
+# instructional scaffold text into every prompt it's used in — e.g. the
+# manager agent, given user_prompt.md's old text verbatim, would respond to
+# "Leave this empty ... to disable" as if it were a real instruction instead
+# of running its actual task. ensure_settings_dir() rewrites a file still in
+# exactly this shape (i.e. never touched by the user) to the fixed template.
+_LEGACY_TEMPLATES: dict[str, str] = {
+    "system_prompt.md": """\
+# Additional System Instructions
+
+Add any custom instructions here. They are appended to every agent's system
+prompt. Useful for company context, tone guidelines, or domain knowledge.
+
+Examples:
+- "Always reply in Hebrew."
+- "We are an e-commerce company called Acme. Prices are in USD."
+- "Never reveal internal tool names to the user."
+""",
+    "user_prompt.md": """\
+# User Prompt Prefix
+
+Text here is prepended to every user message before it reaches the AI.
+Leave this empty (or only comments) to disable.
+
+Examples:
+- "Context: today is {date}. The user is an expert developer."
+- "Always respond concisely, max 3 sentences unless asked for more."
+""",
+    "document_instructions.md": """\
+# Document / Summary Branding
+
+Instructions here are only used when the agent generates a draft, document,
+or summary (not regular chat replies). Describe tone, required structure,
+a footer/disclaimer to include, or how to describe your brand colors in
+words (output is plain text, not styled).
+
+Examples:
+- "Sign off every document with: Acme Inc. — Confidential."
+- "Use a formal, concise tone. Always include a one-line TL;DR at the top."
+- "Our brand colors are navy blue and gold — mention them only if the user
+   asks about visual styling, not in the document body."
+""",
+}
+
 
 def ensure_settings_dir() -> None:
     SETTINGS_DIR.mkdir(exist_ok=True)
     for name, content in _TEMPLATES.items():
         p = SETTINGS_DIR / name
         if not p.exists():
+            p.write_text(content, encoding="utf-8")
+        elif name in _LEGACY_TEMPLATES and p.read_text(encoding="utf-8") == _LEGACY_TEMPLATES[name]:
             p.write_text(content, encoding="utf-8")
 
 
