@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expert Profiles</title>
+<style>
+  :root {
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --success: #10b981;
+    --warning: #f59e0b;
+  }
+  body {
+    background: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                      radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  p.subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+  .glass-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .card-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-enabled { background: rgba(16,185,129,0.2); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-warning { background: rgba(245,158,11,0.2); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-muted   { background: rgba(255,255,255,0.08); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.12); }
+  .card-meta {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.7;
+    margin-top: 0.5rem;
+    white-space: pre-wrap;
+  }
+  .card-meta code {
+    background: rgba(0,0,0,0.3);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+  }
+  .card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }
+  button {
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent); color: white; }
+  .btn-primary:hover:not(:disabled)  { background: var(--accent-hover); }
+  .btn-danger   { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover:not(:disabled)   { background: rgba(239,68,68,0.25); }
+
+  .section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    color: var(--text-main);
+  }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-full  { grid-column: 1 / -1; }
+  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  input[type="text"], textarea {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+    color: white; padding: 0.65rem 0.9rem; border-radius: 8px;
+    font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; }
+  input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+  .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+  .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+  .checkbox-row label { margin: 0; text-transform: none; font-size: 0.9rem; font-weight: 500; color: var(--text-main); }
+  .checkbox-row input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+
+  #loading { display: none; text-align: center; padding: 3rem; color: var(--text-muted); }
+  .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 3px solid rgba(255,255,255,0.3); border-radius: 50%;
+    border-top-color: white; animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🧑‍💼 Expert Profiles</h1>
+  <p class="subtitle">Personas the assistant can take on. Mark one as a crew member to make it available as a worker in Multi-agent mode.</p>
+
+  <div id="loading"><div class="spinner"></div> Loading profiles…</div>
+  <div id="profile-list"></div>
+
+  <div class="section-title">Create Expert Profile</div>
+  <div class="glass-card">
+    <form id="create-form">
+      <div class="form-grid">
+        <div>
+          <label for="f-name">Name</label>
+          <input type="text" id="f-name" placeholder="e.g. Data Analyst" required>
+        </div>
+        <div>
+          <label for="f-role">Role</label>
+          <input type="text" id="f-role" placeholder="e.g. Senior Data Analyst">
+        </div>
+        <div class="form-full">
+          <label for="f-goal">Goal</label>
+          <textarea id="f-goal" rows="2" placeholder="What is this profile's primary objective?"></textarea>
+        </div>
+        <div class="form-full">
+          <label for="f-backstory">Backstory</label>
+          <textarea id="f-backstory" rows="3" placeholder="Context for its behavior..."></textarea>
+        </div>
+        <div>
+          <label for="f-model">Model override (optional)</label>
+          <input type="text" id="f-model" placeholder="e.g. gemini/gemini-flash-lite-latest">
+          <div class="hint">Leave blank to use whatever model is selected in the chat.</div>
+        </div>
+        <div class="form-full">
+          <div class="checkbox-row">
+            <input type="checkbox" id="f-crew">
+            <label for="f-crew">Include as a worker in Multi-agent mode</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="f-default">
+            <label for="f-default">Make this the default single-agent identity</label>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:1.25rem; display:flex; gap:0.75rem; align-items:center;">
+        <button type="submit" class="btn-primary" id="create-btn">➕ Create Profile</button>
+        <span id="create-msg" style="font-size:0.85rem;"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const API = '';
+
+  async function loadProfiles() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('profile-list').innerHTML = '';
+    try {
+      const profiles = await fetch(API + '/profiles').then(r => r.json());
+      document.getElementById('loading').style.display = 'none';
+
+      if (!profiles.length) {
+        document.getElementById('profile-list').innerHTML =
+          '<div class="empty-state"><div class="icon">🗂</div><p>No profiles yet.</p></div>';
+        return;
+      }
+
+      profiles.forEach(p => renderProfileCard(p));
+    } catch (err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('profile-list').innerHTML =
+        '<p style="color:var(--danger)">Failed to load profiles.</p>';
+    }
+  }
+
+  function renderProfileCard(p) {
+    const badges = [];
+    if (p.is_default) badges.push('<span class="badge badge-enabled">Default</span>');
+    if (p.is_crew_member) badges.push('<span class="badge badge-warning">Crew member</span>');
+    if (p.model) badges.push('<span class="badge badge-muted">' + esc(p.model) + '</span>');
+
+    const card = document.createElement('div');
+    card.className = 'glass-card';
+    card.id = 'card-' + p.id;
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            <span>🧑‍💼</span> ${esc(p.name)}
+            ${badges.join(' ')}
+          </div>
+          <div class="card-meta">
+            ${p.role ? '<b>Role:</b> ' + esc(p.role) + '\n' : ''}${p.goal ? '<b>Goal:</b> ' + esc(p.goal) + '\n' : ''}${p.backstory ? '<b>Backstory:</b> ' + esc(p.backstory) : ''}
+          </div>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn-danger" onclick="deleteProfile('${p.id}', '${esc(p.name)}', this)">🗑 Delete</button>
+      </div>
+    `;
+    document.getElementById('profile-list').appendChild(card);
+  }
+
+  async function deleteProfile(pid, name, btn) {
+    if (!confirm('Delete profile "' + name + '"? If it was seeded from config/expert_profiles.yaml it will come back on the next restart unless removed from that file too.')) return;
+    btn.disabled = true;
+    try {
+      await fetch(API + '/profiles/' + pid, { method: 'DELETE' });
+      document.getElementById('card-' + pid)?.remove();
+      if (!document.querySelectorAll('.glass-card').length) loadProfiles();
+    } catch {
+      btn.disabled = false;
+      alert('Failed to delete profile.');
+    }
+  }
+
+  document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('create-btn');
+    const msg = document.getElementById('create-msg');
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) return;
+
+    const body = {
+      name,
+      role: document.getElementById('f-role').value.trim() || null,
+      goal: document.getElementById('f-goal').value.trim() || null,
+      backstory: document.getElementById('f-backstory').value.trim() || null,
+      model: document.getElementById('f-model').value.trim() || null,
+      is_crew_member: document.getElementById('f-crew').checked,
+      is_default: document.getElementById('f-default').checked,
+    };
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Creating…';
+    msg.style.color = '';
+    msg.textContent = '';
+
+    try {
+      const res = await fetch(API + '/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.style.color = 'var(--success)';
+        msg.textContent = '✅ Profile created!';
+        document.getElementById('create-form').reset();
+        loadProfiles();
+      } else {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = data.detail || 'Failed to create profile.';
+      }
+    } catch {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'Network error.';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '➕ Create Profile';
+    }
+  });
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  loadProfiles();
+</script>
+</body>
+</html>

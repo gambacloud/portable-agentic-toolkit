@@ -346,7 +346,12 @@
         <label>Backstory</label>
         <textarea id="profile-backstory" rows="3" placeholder="Context for the agent's behavior...">You are a concise, highly skilled AI assistant. You prefer minimal explanations and exact, working solutions.</textarea>
       </div>
-      
+      <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+        <input type="checkbox" id="profile-crew" style="width:1.1rem; height:1.1rem;">
+        <label for="profile-crew" style="margin:0; text-transform:none; font-weight:500;">Also include this as a worker in Multi-agent mode</label>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.85rem; margin-top:-0.5rem;">You can create more Expert Profiles later from the <b>Profiles</b> link in the sidebar.</p>
+
       <div class="btn-group">
         <button class="secondary" onclick="prevStep()">⬅ Back</button>
         <button onclick="saveProfile()" id="btn-save-profile">Create Profile & Continue ➔</button>
@@ -552,7 +557,8 @@
       role: document.getElementById('profile-role').value,
       goal: document.getElementById('profile-goal').value,
       backstory: document.getElementById('profile-backstory').value,
-      is_default: true
+      is_default: true,
+      is_crew_member: document.getElementById('profile-crew').checked
     };
     
     try {
@@ -572,9 +578,9 @@
 
   const CONNECTOR_ICONS = {
     brave_search: '🌐', slack: '💬', teams: '👥', jira: '📋', github: '🐙', gmail: '✉️',
-    salesforce: '☁️', snowflake: '❄️', zapier: '⚡'
+    salesforce: '☁️', salesforce_cli: '☁️', snowflake: '❄️', zapier: '⚡'
   };
-  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail', 'salesforce', 'snowflake', 'zapier'];
+  const WIZARD_CONNECTORS = ['brave_search', 'slack', 'teams', 'jira', 'github', 'gmail', 'salesforce', 'salesforce_cli', 'snowflake', 'zapier'];
   let mcpCatalog = {};
 
   function titleCase(name) {

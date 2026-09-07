@@ -308,27 +308,39 @@ def get_default_profile() -> dict | None:
     return dict(row) if row else None
 
 
+def list_crew_profiles() -> list[dict]:
+    """Profiles marked to also run as a multi-agent crew member — merged
+    with config/agents.yaml's crew_agents by agents.runner at request time."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM system_profiles WHERE is_crew_member = 1 ORDER BY name"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def create_profile(
     name: str,
     role: str | None,
     goal: str | None,
     backstory: str | None,
     is_default: bool,
+    is_crew_member: bool = False,
+    model: str | None = None,
 ) -> dict:
     profile_id = str(uuid.uuid4())
     with get_conn() as conn:
         if is_default:
             conn.execute("UPDATE system_profiles SET is_default = 0")
         conn.execute(
-            "INSERT INTO system_profiles (id, name, role, goal, backstory, is_default) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (profile_id, name, role, goal, backstory, int(is_default)),
+            "INSERT INTO system_profiles (id, name, role, goal, backstory, is_default, is_crew_member, model) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (profile_id, name, role, goal, backstory, int(is_default), int(is_crew_member), model),
         )
     return get_profile(profile_id)
 
 
 def update_profile(profile_id: str, **kwargs) -> dict | None:
-    allowed = {"name", "role", "goal", "backstory", "is_default"}
+    allowed = {"name", "role", "goal", "backstory", "is_default", "is_crew_member", "model"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return get_profile(profile_id)

@@ -89,7 +89,7 @@
             '<summary class="pat-section-title pat-section-sep">⚙️ CONFIGURE</summary>' +
             '<div class="pat-section-content">' +
             '<a href="' + base + '/mcp-ui"        target="_blank"><span>🔌</span> MCPs</a>' +
-            '<a href="' + base + '/profiles"      target="_blank"><span>👤</span> Profiles</a>' +
+            '<a href="' + base + '/profiles-ui"   target="_blank"><span>👤</span> Profiles</a>' +
             '<a href="http://' + window.location.hostname + ':11434" target="_blank"><span>🦙</span> Ollama</a>' +
             '<a href="' + base + '/docs"          target="_blank"><span>🔧</span> API Docs</a>' +
             '<a href="https://ollama.com/library" target="_blank"><span>📦</span> Model Library</a>' +

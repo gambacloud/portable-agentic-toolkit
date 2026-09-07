@@ -744,23 +744,44 @@ def _load_company_dna() -> str:
 
 
 def _load_crew_agent_configs() -> list[dict]:
-    if not _CONFIG_PATH.exists():
-        return []
+    """crew_agents from config/agents.yaml (factory defaults, git-tracked)
+    plus any DB Profile the user flagged is_crew_member — same shape either
+    way, so a Profile created in /profiles shows up in the team with no YAML
+    edit needed. YAML entries come first; a name clash between the two
+    sources is a user configuration mistake, not something resolved here."""
+    yaml_cfgs: list[dict] = []
+    if _CONFIG_PATH.exists():
+        try:
+            with open(_CONFIG_PATH, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            yaml_cfgs = [
+                {
+                    "role": c.get("role", "Specialist"),
+                    "goal": c.get("goal", ""),
+                    "backstory": c.get("backstory", ""),
+                    "model": c.get("model"),
+                }
+                for c in data.get("crew_agents", [])
+            ]
+        except Exception as exc:
+            log.warning("Failed to load crew_agents from agents.yaml: %s", exc)
+
+    db_cfgs: list[dict] = []
     try:
-        with open(_CONFIG_PATH, encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
-        return [
+        from db.queries import list_crew_profiles
+        db_cfgs = [
             {
-                "role": c.get("role", "Specialist"),
-                "goal": c.get("goal", ""),
-                "backstory": c.get("backstory", ""),
-                "model": c.get("model"),
+                "role": p.get("role") or p.get("name") or "Specialist",
+                "goal": p.get("goal") or "",
+                "backstory": p.get("backstory") or "",
+                "model": p.get("model"),
             }
-            for c in data.get("crew_agents", [])
+            for p in list_crew_profiles()
         ]
     except Exception as exc:
-        log.warning("Failed to load crew_agents: %s", exc)
-        return []
+        log.debug("No DB crew profiles loaded: %s", exc)
+
+    return yaml_cfgs + db_cfgs
 
 
 def _agent_config(profile_id: Optional[str] = None) -> dict:

@@ -347,6 +347,8 @@ class ProfileCreate(BaseModel):
     goal: str | None = None
     backstory: str | None = None
     is_default: bool = False
+    is_crew_member: bool = False
+    model: str | None = None
 
 
 class ProfileUpdate(BaseModel):
@@ -355,6 +357,8 @@ class ProfileUpdate(BaseModel):
     goal: str | None = None
     backstory: str | None = None
     is_default: bool | None = None
+    is_crew_member: bool | None = None
+    model: str | None = None
 
 
 # ── Identity dependency ───────────────────────────────────────────────────────
@@ -840,7 +844,8 @@ def list_profiles():
 @api.post("/profiles", status_code=201, tags=["profiles"])
 def create_profile(body: ProfileCreate):
     return q.create_profile(
-        body.name, body.role, body.goal, body.backstory, body.is_default
+        body.name, body.role, body.goal, body.backstory, body.is_default,
+        body.is_crew_member, body.model,
     )
 
 
@@ -1109,6 +1114,14 @@ def outputs_ui():
 @api.get("/kb-ui", response_class=HTMLResponse, tags=["ui"])
 def kb_ui():
     html_path = Path(__file__).parent.parent / "public" / "kb_ui.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "UI File Not Found"
+
+
+@api.get("/profiles-ui", response_class=HTMLResponse, tags=["ui"])
+def profiles_ui():
+    html_path = Path(__file__).parent.parent / "public" / "profiles_ui.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "UI File Not Found"
