@@ -207,9 +207,17 @@ function ReminderItem({ reminder, onDismiss }: { reminder: any; onDismiss: (id: 
           ✕
         </button>
       </div>
-      <div className="text-gray-500 truncate group-hover:text-gray-300 transition-colors" title={reminder.session_id}>
-        Chat: {reminder.session_id?.slice(0, 8) || "..."}
-      </div>
+      {reminder.session_id ? (
+        <a
+          href={`/?conv=${reminder.session_id}`}
+          className="block text-gray-500 truncate hover:text-indigo-400 hover:underline group-hover:text-gray-300 transition-colors"
+          title={reminder.session_id}
+        >
+          Chat: {reminder.session_id.slice(0, 8)}
+        </a>
+      ) : (
+        <div className="text-gray-500 truncate group-hover:text-gray-300 transition-colors">Chat: ...</div>
+      )}
     </div>
   );
 }
