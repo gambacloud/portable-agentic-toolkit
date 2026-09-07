@@ -117,6 +117,7 @@ class _OllamaAgent:
         max_iter: int = 6,
     ):
         self.role = role
+        self.goal = goal
         self.model = model
         self.tool_defs = tool_defs
         self.tool_map = tool_map
@@ -393,9 +394,124 @@ class _Runner:
             log.error("Runner failed after %.2fs — %s", elapsed, exc, exc_info=True)
             raise
 
+    def _select_relevant_agents(self, task: str) -> list:
+        """Ask a cheap routing call which team members this task actually
+        needs, instead of always fanning out to every crew member. Falls
+        back to the full team whenever the router is unavailable, fails, or
+        gives an answer we can't parse — under-selecting silently would be
+        worse than the old always-run-everyone behaviour."""
+        if len(self._agents) <= 1:
+            return self._agents
+
+        on_step = self._on_step
+        roster = "\n".join(f"- {a.role}: {a.goal}" for a in self._agents)
+        router = _OllamaAgent(
+            role="Team Router",
+            goal="Decide which team members are needed for a given task.",
+            backstory="You triage work for a team and assign only the members who are actually needed.",
+            model=self._model,
+            tool_defs=[],
+            tool_map={},
+        )
+        routing_prompt = (
+            f"Team members available:\n{roster}\n\n"
+            f"Task: {task}\n\n"
+            "Which of the team members above are actually needed to complete this task well? "
+            "Reply with nothing but a comma-separated list of their exact role names from the "
+            "list above. Include only the ones genuinely needed — if just one suffices, name "
+            "only that one. If unsure, list all of them."
+        )
+        try:
+            reply = router.run(routing_prompt)
+        except Exception as exc:
+            log.warning("Routing call failed, using full team: %s", exc)
+            return self._agents
+
+        if router.failed:
+            log.warning("Routing call failed, using full team: %s", reply[:200])
+            return self._agents
+
+        chosen = [a for a in self._agents if a.role.lower() in reply.lower()]
+        if not chosen:
+            log.warning("Routing reply matched no known role, using full team: %r", reply[:200])
+            return self._agents
+
+        if on_step:
+            skipped = [a.role for a in self._agents if a not in chosen]
+            on_step(
+                "🧭 Routing",
+                f"selected: {', '.join(a.role for a in chosen)}"
+                + (f" — skipped: {', '.join(skipped)}" if skipped else ""),
+            )
+        return chosen
+
+    def _select_relevant_tools(self, task: str, tool_defs: list) -> list:
+        """Ask a cheap routing call which tools this task actually needs,
+        once for the whole team, instead of handing every worker the entire
+        tool surface (every MCP server's tools). A large tool list measurably
+        confuses a small local model into looping on a trivial task instead
+        of answering — see the QA note from testing dynamic agent selection.
+        Falls back to the full tool set on any failure or unparseable reply."""
+        if len(tool_defs) <= 1:
+            return tool_defs
+
+        on_step = self._on_step
+        roster = "\n".join(
+            f"- {t['function']['name']}: {t['function'].get('description', '')[:100]}"
+            for t in tool_defs
+        )
+        router = _OllamaAgent(
+            role="Tool Router",
+            goal="Decide which tools a team needs for a given task.",
+            backstory="You triage available tools and grant only the ones actually needed.",
+            model=self._model,
+            tool_defs=[],
+            tool_map={},
+        )
+        routing_prompt = (
+            f"Tools available:\n{roster}\n\n"
+            f"Task: {task}\n\n"
+            "Which of the tools above are actually needed to complete this task? Reply with "
+            "nothing but a comma-separated list of their exact names from the list above. "
+            "If none are needed, reply with the single word NONE. If unsure, list all of them."
+        )
+        try:
+            reply = router.run(routing_prompt)
+        except Exception as exc:
+            log.warning("Tool routing call failed, using full tool set: %s", exc)
+            return tool_defs
+
+        if router.failed:
+            log.warning("Tool routing call failed, using full tool set: %s", reply[:200])
+            return tool_defs
+
+        if reply.strip().strip(".").upper() == "NONE":
+            if on_step:
+                on_step("🧰 Tools", "0 tool(s) selected — none needed for this task")
+            return []
+
+        reply_lower = reply.lower()
+        chosen = [t for t in tool_defs if t["function"]["name"].lower() in reply_lower]
+        if not chosen:
+            log.warning("Tool routing reply matched no known tool, using full tool set: %r", reply[:200])
+            return tool_defs
+
+        if on_step:
+            on_step("🧰 Tools", f"{len(chosen)}/{len(tool_defs)} tool(s) selected for this task")
+        return chosen
+
     def _run_team(self, task: str) -> str:
         on_step = self._on_step
         import concurrent.futures
+
+        agents = self._select_relevant_agents(task)
+
+        if agents and agents[0].tool_defs:
+            allowed_defs = self._select_relevant_tools(task, agents[0].tool_defs)
+            allowed_names = {t["function"]["name"] for t in allowed_defs}
+            for agent in agents:
+                agent.tool_defs = allowed_defs
+                agent.tool_map = {n: fn for n, fn in agent.tool_map.items() if n in allowed_names}
 
         def _run_worker(agent) -> str:
             log.debug("Delegating to: %s (model=%s)", agent.role, agent.model)
@@ -416,15 +532,15 @@ class _Runner:
 
             return f"**{agent.role}**:\n{result}"
 
-        # Run workers concurrently
+        # Run the selected workers concurrently
         context_parts: list[str] = []
-        if self._agents:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(self._agents)) as executor:
-                context_parts = list(executor.map(_run_worker, self._agents))
+        if agents:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(agents)) as executor:
+                context_parts = list(executor.map(_run_worker, agents))
 
-        failed_count = sum(1 for a in self._agents if a.failed)
+        failed_count = sum(1 for a in agents if a.failed)
         if failed_count and on_step:
-            on_step("⚠️ Team status", f"{failed_count}/{len(self._agents)} worker(s) failed — see steps above")
+            on_step("⚠️ Team status", f"{failed_count}/{len(agents)} worker(s) failed — see steps above")
 
         # Manager synthesizes all worker outputs
         dna = _load_company_dna()
@@ -456,7 +572,7 @@ class _Runner:
         result = manager.run(synthesis_prompt)
 
         if on_step:
-            parts = [f"{a.role} ({a.model}): {a.tokens_used}" for a in self._agents]
+            parts = [f"{a.role} ({a.model}): {a.tokens_used}" for a in agents]
             parts.append(f"{manager.role} ({manager.model}): {manager.tokens_used}")
             on_step("📊 Token usage", ", ".join(parts))
         return result
