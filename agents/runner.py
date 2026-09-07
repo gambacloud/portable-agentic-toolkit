@@ -500,26 +500,135 @@ class _Runner:
             on_step("🧰 Tools", f"{len(chosen)}/{len(tool_defs)} tool(s) selected for this task")
         return chosen
 
-    def _run_team(self, task: str) -> str:
-        on_step = self._on_step
-        import concurrent.futures
-
+    def _coarse_plan(self, task: str) -> list[dict]:
+        """The old select-agents + select-tools behaviour: every selected
+        worker gets the exact same raw task text, with one team-wide tool
+        filter. Used when real planning (_plan) fails or is unparseable —
+        strictly safer than under-selecting, since it still runs every
+        agent that plausibly matters."""
         agents = self._select_relevant_agents(task)
-
         if agents and agents[0].tool_defs:
             allowed_defs = self._select_relevant_tools(task, agents[0].tool_defs)
             allowed_names = {t["function"]["name"] for t in allowed_defs}
             for agent in agents:
                 agent.tool_defs = allowed_defs
                 agent.tool_map = {n: fn for n, fn in agent.tool_map.items() if n in allowed_names}
+        return [{"agent": a, "instruction": task} for a in agents]
 
-        def _run_worker(agent) -> str:
+    def _plan(self, task: str) -> list[dict]:
+        """Ask a planner call to break the task into a specific instruction
+        and tool list per team member, instead of broadcasting the same raw
+        task and the same team-wide tool filter to everyone selected.
+        Returns [{"agent": _OllamaAgent, "instruction": str}, ...]. Falls
+        back to _coarse_plan on any router failure or unparseable reply."""
+        if len(self._agents) <= 1:
+            return [{"agent": a, "instruction": task} for a in self._agents]
+
+        on_step = self._on_step
+        agent_roster = "\n".join(f"- {a.role}: {a.goal}" for a in self._agents)
+        all_tool_defs = self._agents[0].tool_defs or []
+        tool_roster = "\n".join(
+            f"- {t['function']['name']}: {t['function'].get('description', '')[:100]}"
+            for t in all_tool_defs
+        ) or "(none)"
+
+        planner = _OllamaAgent(
+            role="Planner",
+            goal="Break a task into per-agent instructions and tool assignments.",
+            backstory=(
+                "You plan work for a team: decide who is genuinely needed, write a "
+                "specific instruction for exactly what each of them should do, and "
+                "list only the tools each one personally needs."
+            ),
+            model=self._model,
+            tool_defs=[],
+            tool_map={},
+        )
+        plan_prompt = (
+            f"Team members available:\n{agent_roster}\n\n"
+            f"Tools available:\n{tool_roster}\n\n"
+            f"Task: {task}\n\n"
+            "Break this into a plan. Include only members genuinely needed — skip anyone "
+            "who wouldn't add anything. For each one, write a specific instruction covering "
+            "exactly what they personally should do (not just the raw task restated), and "
+            "list only the tool names they personally need (exact names from the list above, "
+            "empty list if none).\n\n"
+            "IMPORTANT: every member works independently and in parallel — none of them can "
+            "see any other member's output, and there is no second round. Never write an "
+            "instruction that depends on another member's result (e.g. 'summarize what the "
+            "researcher found') — if a step truly needs another step's output first, give both "
+            "the same self-contained instruction instead so each can complete the task alone.\n\n"
+            'Reply with nothing but JSON, no prose, no code fence: {"steps": [{"role": '
+            '"<exact role name>", "instruction": "<specific instruction>", "tools": '
+            '["<tool name>", ...]}]}'
+        )
+        try:
+            reply = planner.run(plan_prompt)
+        except Exception as exc:
+            log.warning("Planning call failed, using coarse fallback: %s", exc)
+            return self._coarse_plan(task)
+
+        if planner.failed:
+            log.warning("Planning call failed, using coarse fallback: %s", reply[:200])
+            return self._coarse_plan(task)
+
+        parsed = _parse_tool_args(reply)
+        if isinstance(parsed, str) or not isinstance(parsed.get("steps"), list) or not parsed["steps"]:
+            log.warning("Planning reply unparseable, using coarse fallback: %r", reply[:200])
+            return self._coarse_plan(task)
+
+        by_role = {a.role.lower(): a for a in self._agents}
+        tool_defs_by_name = {t["function"]["name"]: t for t in all_tool_defs}
+
+        steps = []
+        for raw_step in parsed["steps"]:
+            if not isinstance(raw_step, dict):
+                continue
+            role = str(raw_step.get("role", "")).strip()
+            agent = by_role.get(role.lower()) or next(
+                (a for a in self._agents if role and (role.lower() in a.role.lower() or a.role.lower() in role.lower())),
+                None,
+            )
+            if not agent or any(s["agent"] is agent for s in steps):
+                continue
+
+            instruction = str(raw_step.get("instruction") or task).strip()
+            tool_names = raw_step.get("tools")
+            tool_names = tool_names if isinstance(tool_names, list) else []
+            selected_defs = [tool_defs_by_name[n] for n in tool_names if n in tool_defs_by_name]
+
+            agent.tool_defs = selected_defs
+            allowed = {t["function"]["name"] for t in selected_defs}
+            agent.tool_map = {n: fn for n, fn in agent.tool_map.items() if n in allowed}
+
+            steps.append({"agent": agent, "instruction": instruction})
+
+        if not steps:
+            log.warning("Planning reply named no known agents, using coarse fallback: %r", reply[:200])
+            return self._coarse_plan(task)
+
+        if on_step:
+            summary = "; ".join(
+                f"{s['agent'].role} ({len(s['agent'].tool_defs)} tools): {s['instruction'][:60]}"
+                for s in steps
+            )
+            on_step("🗺️ Plan", summary)
+
+        return steps
+
+    def _run_team(self, task: str) -> str:
+        on_step = self._on_step
+        import concurrent.futures
+
+        steps = self._plan(task)
+
+        def _run_worker(step: dict) -> str:
+            agent, instruction = step["agent"], step["instruction"]
             log.debug("Delegating to: %s (model=%s)", agent.role, agent.model)
             if on_step:
-                on_step("🤝 Delegating", f"→ **{agent.role}** ({agent.model}): {task[:80]}")
+                on_step("🤝 Delegating", f"→ **{agent.role}** ({agent.model}): {instruction[:80]}")
 
-            prompt = task
-            result = agent.run(prompt)
+            result = agent.run(instruction)
 
             if agent.failed:
                 log.warning("Worker '%s' (model=%s) failed: %s", agent.role, agent.model, result[:200])
@@ -532,11 +641,13 @@ class _Runner:
 
             return f"**{agent.role}**:\n{result}"
 
-        # Run the selected workers concurrently
+        # Run the planned workers concurrently
         context_parts: list[str] = []
-        if agents:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(agents)) as executor:
-                context_parts = list(executor.map(_run_worker, agents))
+        if steps:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(steps)) as executor:
+                context_parts = list(executor.map(_run_worker, steps))
+
+        agents = [s["agent"] for s in steps]
 
         failed_count = sum(1 for a in agents if a.failed)
         if failed_count and on_step:
@@ -575,7 +686,46 @@ class _Runner:
             parts = [f"{a.role} ({a.model}): {a.tokens_used}" for a in agents]
             parts.append(f"{manager.role} ({manager.model}): {manager.tokens_used}")
             on_step("📊 Token usage", ", ".join(parts))
+
+        self._judge(task, result)
         return result
+
+    def _judge(self, task: str, answer: str) -> None:
+        """Verification only, not a retry loop: ask whether the delivered
+        answer actually satisfies the original task, and surface the
+        verdict as a step. Deliberately doesn't loop back and re-run the
+        team on INCOMPLETE — that risks the team failing to converge and
+        looping forever on a genuinely hard or ambiguous task."""
+        on_step = self._on_step
+        if not on_step:
+            return
+
+        judge = _OllamaAgent(
+            role="Judge",
+            goal="Verify whether a delivered answer satisfies the task it was meant to answer.",
+            backstory="You check delivered work against what was actually asked, and say so plainly.",
+            model=self._model,
+            tool_defs=[],
+            tool_map={},
+        )
+        judge_prompt = (
+            f"Original task: {task}\n\nDelivered answer:\n{answer}\n\n"
+            "Does this answer fully satisfy the task? Reply with nothing but one line: "
+            "either the single word PASS, or INCOMPLETE followed by a colon and one short "
+            "sentence naming what's missing."
+        )
+        try:
+            verdict = judge.run(judge_prompt)
+        except Exception as exc:
+            log.debug("Judge call failed, skipping: %s", exc)
+            return
+        if judge.failed:
+            log.debug("Judge call failed, skipping: %s", verdict[:200])
+            return
+
+        verdict = verdict.strip()
+        icon = "✅" if verdict.upper().startswith("PASS") else "⚠️"
+        on_step(f"{icon} Judge", verdict[:200])
 
 
 def _load_company_dna() -> str:
@@ -703,5 +853,49 @@ def _parse_tool_args(raw_args) -> dict | str:
     s_clean = re.sub(r",(\s*[}\]])", r"\1", s)
     try:
         return json.loads(s_clean)
+    except json.JSONDecodeError:
+        pass
+
+    # A small model sometimes stops generating before closing every bracket —
+    # close whatever is still open (tracking string state so brackets inside
+    # a quoted value aren't counted) and try once more before giving up.
+    repaired = _close_unbalanced_json(s_clean)
+    if repaired is not None:
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+    try:
+        return json.loads(s_clean)
     except json.JSONDecodeError as exc:
         return f"Invalid JSON arguments provided: {exc}. Please fix your JSON formatting and try again."
+
+
+def _close_unbalanced_json(s: str) -> Optional[str]:
+    """Append whatever closing braces/brackets a truncated JSON string is
+    missing, in the right order. Returns None if nothing looks unbalanced
+    (so the caller doesn't retry an identical parse for no reason)."""
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    for ch in s:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+    if not stack or in_string:
+        return None
+    closers = {"{": "}", "[": "]"}
+    return s + "".join(closers[c] for c in reversed(stack))
