@@ -21,6 +21,7 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "apscheduler>=3.11.2",
     "fpdf2>=2.7.0",
+    "itsdangerous>=2.2.0",
 ]
 
 [build-system]

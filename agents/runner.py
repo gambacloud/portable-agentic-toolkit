@@ -69,7 +69,10 @@ def build_hierarchical_crew(
         log.warning("No crew_agents in agents.yaml — falling back to single agent")
         return build_crew(model=model, tool_defs=tool_defs, tool_map=tool_map, on_step=on_step, profile_id=profile_id, on_token_usage=on_token_usage)
 
-    log.info("Building team — model=%s workers=%d tools=%d", model, len(crew_cfgs), len(tool_defs))
+    log.info(
+        "Building team — default_model=%s workers=%d tools=%d models=%s",
+        model, len(crew_cfgs), len(tool_defs), [c.get("model") or model for c in crew_cfgs],
+    )
 
     def _backstory(text: str) -> str:
         b = f"{dna}\n\n{text}" if dna else text
@@ -80,7 +83,7 @@ def build_hierarchical_crew(
             role=c["role"],
             goal=c["goal"],
             backstory=_backstory(c["backstory"]),
-            model=model,
+            model=c.get("model") or model,
             tool_defs=tool_defs,
             tool_map=tool_map,
             on_step=on_step,
@@ -120,12 +123,19 @@ class _OllamaAgent:
         self.on_step = on_step
         self.on_token_usage = on_token_usage
         self.max_iter = max_iter
+        self.failed = False  # set when the model call itself errors out (not a tool error)
+        self.tokens_used = 0  # running total for this agent, across all calls in run()
         self._system = (
             f"You are {role}.\nGoal: {goal}\n\n{backstory}"
         )
 
     _LITELLM_PREFIXES = ("groq/", "claude/", "gemini/")
     _OLLAMA_CLOUD_PREFIX = "ollama_cloud/"
+
+    def _record_tokens(self, prompt_tokens: int, completion_tokens: int) -> None:
+        self.tokens_used += prompt_tokens + completion_tokens
+        if self.on_token_usage:
+            self.on_token_usage(prompt_tokens, completion_tokens)
 
     def run(self, task: str) -> str:
         prefix = get_user_prompt_prefix()
@@ -150,10 +160,10 @@ class _OllamaAgent:
                     messages=messages,
                     tools=self.tool_defs if self.tool_defs else None,
                 )
-                if self.on_token_usage:
-                    self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+                self._record_tokens(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             except Exception as exc:
                 log.error("Ollama chat error: %s", exc)
+                self.failed = True
                 return f"Error communicating with model: {exc}"
 
             msg = resp.message
@@ -185,10 +195,10 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = ollama.chat(model=self.model, messages=messages)
-            if self.on_token_usage:
-                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+            self._record_tokens(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             return resp.message.content or "Unable to complete task within iteration limit."
         except Exception as exc:
+            self.failed = True
             return f"Error: {exc}"
 
     def _run_ollama_cloud(self, task: str) -> str:
@@ -207,10 +217,10 @@ class _OllamaAgent:
                     messages=messages,
                     tools=self.tool_defs if self.tool_defs else None,
                 )
-                if self.on_token_usage:
-                    self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+                self._record_tokens(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             except Exception as exc:
                 log.error("Ollama Cloud chat error: %s", exc)
+                self.failed = True
                 return f"Error communicating with Ollama Cloud: {exc}"
 
             msg = resp.message
@@ -239,10 +249,10 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = client.chat(model=model, messages=messages)
-            if self.on_token_usage:
-                self.on_token_usage(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
+            self._record_tokens(getattr(resp, "prompt_eval_count", 0) or 0, getattr(resp, "eval_count", 0) or 0)
             return resp.message.content or "Unable to complete task within iteration limit."
         except Exception as exc:
+            self.failed = True
             return f"Error: {exc}"
 
     def _litellm_chat(self, messages: list, tools: list | None):
@@ -277,10 +287,11 @@ class _OllamaAgent:
         for _ in range(self.max_iter):
             try:
                 resp = self._litellm_chat(messages, self.tool_defs)
-                if self.on_token_usage and hasattr(resp, "usage") and resp.usage:
-                    self.on_token_usage(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
+                if hasattr(resp, "usage") and resp.usage:
+                    self._record_tokens(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
             except Exception as exc:
                 log.error("LiteLLM error: %s", exc)
+                self.failed = True
                 return f"Error communicating with model: {exc}"
 
             msg = resp.choices[0].message
@@ -319,10 +330,11 @@ class _OllamaAgent:
         messages.append({"role": "user", "content": "Please provide your final answer now."})
         try:
             resp = self._litellm_chat(messages, None)
-            if self.on_token_usage and hasattr(resp, "usage") and resp.usage:
-                self.on_token_usage(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
+            if hasattr(resp, "usage") and resp.usage:
+                self._record_tokens(getattr(resp.usage, "prompt_tokens", 0) or 0, getattr(resp.usage, "completion_tokens", 0) or 0)
             return resp.choices[0].message.content or "Unable to complete."
         except Exception as exc:
+            self.failed = True
             return f"Error: {exc}"
 
     def _call_tool(self, fn_name: str, fn_args: dict) -> str:
@@ -386,15 +398,21 @@ class _Runner:
         import concurrent.futures
 
         def _run_worker(agent) -> str:
-            log.debug("Delegating to: %s", agent.role)
+            log.debug("Delegating to: %s (model=%s)", agent.role, agent.model)
             if on_step:
-                on_step("🤝 Delegating", f"→ **{agent.role}**: {task[:80]}")
+                on_step("🤝 Delegating", f"→ **{agent.role}** ({agent.model}): {task[:80]}")
 
             prompt = task
             result = agent.run(prompt)
 
+            if agent.failed:
+                log.warning("Worker '%s' (model=%s) failed: %s", agent.role, agent.model, result[:200])
+                if on_step:
+                    on_step(f"⚠️ {agent.role[:40]}", f"failed on {agent.model} — {result[:150]}")
+                return f"**{agent.role}** [FAILED — do not treat this as a real answer]:\n{result}"
+
             if on_step:
-                on_step(f"✅ {agent.role[:40]}", "done")
+                on_step(f"✅ {agent.role[:40]}", f"done — {agent.tokens_used} tokens")
 
             return f"**{agent.role}**:\n{result}"
 
@@ -403,6 +421,10 @@ class _Runner:
         if self._agents:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(self._agents)) as executor:
                 context_parts = list(executor.map(_run_worker, self._agents))
+
+        failed_count = sum(1 for a in self._agents if a.failed)
+        if failed_count and on_step:
+            on_step("⚠️ Team status", f"{failed_count}/{len(self._agents)} worker(s) failed — see steps above")
 
         # Manager synthesizes all worker outputs
         dna = _load_company_dna()
@@ -426,9 +448,18 @@ class _Runner:
             "Here are the outputs from your team:\n\n"
             + "\n\n---\n\n".join(context_parts)
             + f"\n\nOriginal task: {task}\n\n"
+            "Any output marked [FAILED] came from a team member whose model call errored out — "
+            "ignore its content entirely and rely on the other members' outputs instead. "
+            "If every member failed, say so plainly instead of guessing an answer.\n\n"
             "Synthesize a final, clear, and complete answer."
         )
-        return manager.run(synthesis_prompt)
+        result = manager.run(synthesis_prompt)
+
+        if on_step:
+            parts = [f"{a.role} ({a.model}): {a.tokens_used}" for a in self._agents]
+            parts.append(f"{manager.role} ({manager.model}): {manager.tokens_used}")
+            on_step("📊 Token usage", ", ".join(parts))
+        return result
 
 
 def _load_company_dna() -> str:
@@ -457,6 +488,7 @@ def _load_crew_agent_configs() -> list[dict]:
                 "role": c.get("role", "Specialist"),
                 "goal": c.get("goal", ""),
                 "backstory": c.get("backstory", ""),
+                "model": c.get("model"),
             }
             for c in data.get("crew_agents", [])
         ]

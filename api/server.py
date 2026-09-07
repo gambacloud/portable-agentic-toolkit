@@ -1367,7 +1367,7 @@ async def ws_chat(websocket: WebSocket, resume_conv_id: str | None = None):
             finally:
                 hitl_futures.pop(hit_id, None)
 
-        _ALWAYS_SHOW = {"🚀", "✅"}
+        _ALWAYS_SHOW = {"🚀", "✅", "⚠️", "📊"}
 
         def on_agent_step(step_name: str, content: str) -> None:
             always = any(step_name.startswith(p) for p in _ALWAYS_SHOW)

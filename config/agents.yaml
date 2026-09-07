@@ -26,6 +26,12 @@ agents:
 # ── Multi-agent crew (Process.hierarchical) ──────────────────────────────────
 # These agents are spawned when the user enables "Multi-agent mode" in settings.
 # The manager orchestrates them automatically — no need to define tasks manually.
+#
+# Each agent may optionally set "model:" to run on a different provider than
+# the one selected in the UI (falls back to the UI model when omitted), e.g.:
+#   model: "gemini/gemini-3.6-flash"   # needs GOOGLE_API_KEY, set via /wizard-ui
+#   model: "claude/claude-sonnet-5"    # needs ANTHROPIC_API_KEY
+#   model: "ollama_cloud/gemma4:31b"   # needs an Ollama Cloud key
 crew_agents:
   - name: researcher
     role: "Research Specialist"
