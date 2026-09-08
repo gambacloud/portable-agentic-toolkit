@@ -383,7 +383,16 @@ class _Runner:
 
         t_start = time.perf_counter()
         try:
-            result = self._run_team(task) if hierarchical else self._agents[0].run(task)
+            if hierarchical:
+                result = self._run_team(task)
+            else:
+                agent = self._agents[0]
+                if agent.tool_defs:
+                    allowed = self._select_relevant_tools(task, agent.tool_defs)
+                    allowed_names = {t["function"]["name"] for t in allowed}
+                    agent.tool_defs = allowed
+                    agent.tool_map = {n: fn for n, fn in agent.tool_map.items() if n in allowed_names}
+                result = agent.run(task)
             elapsed = time.perf_counter() - t_start
             log.info("Runner completed in %.2fs — result_len=%d", elapsed, len(result))
             if on_step:
