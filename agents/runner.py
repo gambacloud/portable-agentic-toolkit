@@ -691,12 +691,27 @@ class _Runner:
         )
         result = manager.run(synthesis_prompt)
 
+        if manager.failed:
+            log.warning("Manager synthesis failed: %s", result[:200])
+            if on_step:
+                on_step("⚠️ Manager", f"synthesis failed — {result[:150]}")
+            succeeded = [c for c, a in zip(context_parts, agents) if not a.failed]
+            if succeeded:
+                result = (
+                    "The team's synthesis step failed (the manager model errored out), "
+                    "so here are the individual results that did complete instead:\n\n"
+                    + "\n\n---\n\n".join(succeeded)
+                )
+            else:
+                result = "The team was unable to complete this task — every model call failed. Please try again in a moment."
+
         if on_step:
             parts = [f"{a.role} ({a.model}): {a.tokens_used}" for a in agents]
             parts.append(f"{manager.role} ({manager.model}): {manager.tokens_used}")
             on_step("📊 Token usage", ", ".join(parts))
 
-        self._judge(task, result)
+        if not manager.failed:
+            self._judge(task, result)
         return result
 
     def _judge(self, task: str, answer: str) -> None:
